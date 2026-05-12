@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <title>VISION ∙ live cv playground</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <main id="stage" class="stage">
+      <div class="window" id="window">
+        <header class="titlebar" aria-hidden="true">
+          <div class="dots">
+            <span class="dot dot--red"></span>
+            <span class="dot dot--yellow"></span>
+            <span class="dot dot--green"></span>
+          </div>
+          <div class="title">VISION ∙ live cv playground</div>
+          <div class="meta">
+            <span id="fps" class="meta__fps">— fps</span>
+            <span id="status" class="meta__status">booting</span>
+          </div>
+        </header>
+
+        <div class="canvas-wrap">
+          <video id="video" playsinline muted autoplay aria-hidden="true"></video>
+          <canvas id="output" class="output"></canvas>
+
+          <div class="overlay overlay--top">
+            <span class="badge" id="modeBadge">LINES</span>
+          </div>
+
+          <div class="overlay overlay--bottom">
+            <nav class="dock" role="tablist" aria-label="Vision modes">
+              <button class="chip is-active" data-mode="lines" role="tab" aria-selected="true">
+                <span class="chip__num">01</span>
+                <span class="chip__label">Lines</span>
+              </button>
+              <button class="chip" data-mode="depth" role="tab" aria-selected="false">
+                <span class="chip__num">02</span>
+                <span class="chip__label">Depth</span>
+              </button>
+              <button class="chip" data-mode="objects" role="tab" aria-selected="false">
+                <span class="chip__num">03</span>
+                <span class="chip__label">Objects</span>
+              </button>
+              <button class="chip" data-mode="segment" role="tab" aria-selected="false">
+                <span class="chip__num">04</span>
+                <span class="chip__label">Segment</span>
+              </button>
+            </nav>
+          </div>
+
+          <div id="boot" class="boot">
+            <div class="boot__inner">
+              <div class="boot__title">initializing vision</div>
+              <div class="boot__step" id="bootStep">requesting camera…</div>
+              <div class="boot__bar"><div class="boot__bar-fill" id="bootBar"></div></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </main>
+
+    <!-- OpenCV.js (lines + depth) -->
+    <script async src="https://docs.opencv.org/4.x/opencv.js" onload="window.__cvReady=true"></script>
+    <!-- TensorFlow.js + COCO-SSD (object detection) -->
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.20.0/dist/tf.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js"></script>
+    <!-- MediaPipe Selfie Segmentation -->
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation@0.1.1675465747/selfie_segmentation.js" crossorigin="anonymous"></script>
+
+    <script type="module" src="./app.js"></script>
+  </body>
+</html>
