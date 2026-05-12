@@ -69,7 +69,7 @@ export const SegmentMode = {
     }
 
     outputCtx.save();
-    outputCtx.setTransform(-1, 0, 0, 1, w, 0);
+    outputCtx.setTransform(1, 0, 0, 1, 0, 0);
 
     // Dimmed background.
     outputCtx.drawImage(captureCanvas, 0, 0);

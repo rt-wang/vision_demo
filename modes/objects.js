@@ -5,9 +5,8 @@
  * on a laptop GPU via the WebGL backend. We run detection on every frame and
  * draw boxes on top of a mirrored copy of the source.
  *
- * Boxes are returned in source-pixel space (un-mirrored). To keep label text
- * readable we draw under the canvas's normal transform and flip box X coords
- * manually as we go.
+ * Boxes are returned in source-pixel space, which matches the output canvas
+ * directly — no coordinate transform needed.
  */
 
 export const ObjectsMode = {
@@ -27,16 +26,13 @@ export const ObjectsMode = {
     const w = captureCanvas.width;
     const h = captureCanvas.height;
 
-    // Detect on the un-mirrored source.
     const predictions = await this._model.detect(captureCanvas, 20, 0.5);
 
-    // Mirrored frame underneath.
     outputCtx.save();
-    outputCtx.setTransform(-1, 0, 0, 1, w, 0);
+    outputCtx.setTransform(1, 0, 0, 1, 0, 0);
     outputCtx.drawImage(captureCanvas, 0, 0);
     outputCtx.restore();
 
-    // Boxes + labels in display (un-mirrored) space.
     const fontSize = Math.max(14, Math.floor(w * 0.018));
     outputCtx.font = `${fontSize}px ui-monospace, Menlo, monospace`;
     outputCtx.textBaseline = "middle";
@@ -44,12 +40,11 @@ export const ObjectsMode = {
 
     for (const p of predictions) {
       const [x, y, bw, bh] = p.bbox;
-      const mx = w - x - bw; // flip box across the vertical axis
 
       outputCtx.strokeStyle = "rgba(126, 240, 197, 0.95)";
       outputCtx.shadowBlur = 12;
       outputCtx.shadowColor = "rgba(126, 240, 197, 0.55)";
-      outputCtx.strokeRect(mx, y, bw, bh);
+      outputCtx.strokeRect(x, y, bw, bh);
       outputCtx.shadowBlur = 0;
 
       const label = `${p.class} · ${Math.round(p.score * 100)}%`;
@@ -58,7 +53,7 @@ export const ObjectsMode = {
       const m = outputCtx.measureText(label);
       const lw = m.width + padX * 2;
       const lh = fontSize + padY * 2;
-      const lx = Math.max(0, mx);
+      const lx = Math.max(0, x);
       const ly = Math.max(0, y - lh);
 
       outputCtx.fillStyle = "rgba(126, 240, 197, 0.95)";

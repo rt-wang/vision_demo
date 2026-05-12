@@ -3,14 +3,10 @@
  *
  * Pipeline:
  *   getUserMedia → hidden <video>
- *     → captureCanvas (un-mirrored frame buffer, used for analysis)
- *       → active mode's process() draws into outputCanvas (mirrored for display)
+ *     → captureCanvas (per-frame buffer that analysis reads from)
+ *       → active mode's process() draws into outputCanvas
  *
- * The output canvas is rendered mirrored so the camera feels like a mirror, but
- * analysis runs on the un-mirrored buffer. Any overlay coordinates that come
- * from analysis are flipped on the X axis when drawn, so labels read normally.
- *
- * Modes are objects with { id, label, ready, init, process, dispose }, so adding
+ * Modes are objects with { id, label, init, process, dispose }, so adding
  * a fifth mode is just a matter of dropping another entry into MODES.
  */
 
