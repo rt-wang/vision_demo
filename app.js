@@ -58,6 +58,7 @@ const ui = {
   inspectorSource: document.getElementById("inspectorSource"),
   inspectorMeta: document.getElementById("inspectorMeta"),
   inspectorJson: document.getElementById("inspectorJson"),
+  feedToggle: document.getElementById("feedToggle"),
 };
 
 const state = {
@@ -77,6 +78,7 @@ const state = {
   lastPlanError: null,
   lastPlanWarnings: [],
   inspectorOpen: false,
+  hideFeed: false,
 
   // Intensity smoothing.
   targetIntensity: 0.8,
@@ -279,6 +281,12 @@ function setInspectorOpen(open) {
   if (open) refreshInspector();
 }
 
+function setHideFeed(hide) {
+  state.hideFeed = hide;
+  ui.feedToggle.classList.toggle("is-active", hide);
+  ui.feedToggle.setAttribute("aria-pressed", hide ? "true" : "false");
+}
+
 async function submitPrompt() {
   if (state.promptPending) return;
   const text = ui.promptInput.value.trim();
@@ -354,6 +362,7 @@ function wireUi() {
 
   ui.inspectorToggle.addEventListener("click", () => setInspectorOpen(!state.inspectorOpen));
   ui.inspectorClose.addEventListener("click", () => setInspectorOpen(false));
+  ui.feedToggle.addEventListener("click", () => setHideFeed(!state.hideFeed));
 
   // Keyboard shortcuts.
   window.addEventListener("keydown", (e) => {
@@ -384,6 +393,13 @@ function wireUi() {
     if (e.key === "i" || e.key === "I") {
       e.preventDefault();
       setInspectorOpen(!state.inspectorOpen);
+      return;
+    }
+
+    // "c" toggles the camera feed.
+    if (e.key === "c" || e.key === "C") {
+      e.preventDefault();
+      setHideFeed(!state.hideFeed);
       return;
     }
 
@@ -425,10 +441,10 @@ async function loop() {
           state.objects,
           state.geometries,
           plan,
-          { intensity: state.currentIntensity, timeMs: now },
+          { intensity: state.currentIntensity, timeMs: now, hideFeed: state.hideFeed },
         );
       } else {
-        drawNeutralPreview(outputCtx, captureCanvas, state.objects, state.geometries);
+        drawNeutralPreview(outputCtx, captureCanvas, state.objects, state.geometries, { hideFeed: state.hideFeed });
       }
 
       updateCountBadge(state.objects);

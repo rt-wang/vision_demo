@@ -57,13 +57,18 @@ function drawLines(ctx, geom, w) {
   ctx.restore();
 }
 
-export function drawNeutralPreview(ctx, captureCanvas, objects, geometries) {
+export function drawNeutralPreview(ctx, captureCanvas, objects, geometries, opts = {}) {
   const w = ctx.canvas.width;
   const h = ctx.canvas.height;
 
   ctx.save();
   ctx.setTransform(1, 0, 0, 1, 0, 0);
-  ctx.drawImage(captureCanvas, 0, 0, w, h);
+  if (opts.hideFeed) {
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0, 0, w, h);
+  } else {
+    ctx.drawImage(captureCanvas, 0, 0, w, h);
+  }
 
   const fontSize = Math.max(14, Math.floor(w * 0.018));
   const idFontSize = Math.max(10, fontSize - 4);
