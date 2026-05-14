@@ -75,14 +75,15 @@ Add:
 
 This proves the planner loop before adding new visual primitives.
 
-### Phase 4B: Expand Vocabulary With Two High-Impact Actions
+### Phase 4B: Expand Vocabulary With High-Impact Actions
 
 Add:
 
 - `localDepth`
 - `freezeBox`
+- `foregroundBackground`
 
-These fit the object-local vision direction and create much more variety without making the LLM unsafe.
+`localDepth` and `freezeBox` fit the object-local vision direction and create much more variety without making the LLM unsafe. `foregroundBackground` adds one scene-level CV action to the same safe vocabulary: OpenCV.js background subtraction extracts moving foreground from a learned static background, then the action renderer tints foreground and dims/tints background.
 
 ### Phase 4C: Better Prompt Context
 
@@ -110,10 +111,12 @@ server/
 
 analysis/
   sceneSignals.js
+  foregroundBackground.js
 
 render/actions/
   localDepth.js
   freezeBox.js
+  foregroundBackground.js
 ```
 
 If the project stays fully static for now, `server/planRoute.js` can be a reference implementation while `planClient.js` uses a mocked planner or a user-pasted JSON plan. Real API keys should never live in browser code.
@@ -125,6 +128,9 @@ index.html
 app.js
 styles.css
 llm/actionPlanSchema.js
+llm/validateActionPlan.js
+llm/plannerPrompt.js
+llm/mockPlanner.js
 analysis/objectLocalCv.js
 render/actionRenderer.js
 llm/defaultPlans.js
@@ -141,6 +147,7 @@ Expected changes:
 - Add validation and schema constants.
 - Add optional local-depth geometry.
 - Add freeze-box persistent state.
+- Add optional foreground/background scene mask.
 
 ## 6. Runtime State
 
@@ -232,18 +239,41 @@ The browser should send:
     "selectedObjectClass": null
   },
   "currentPlan": {},
-  "supportedActions": ["localEdges", "localLines", "aura", "trail", "spotlight", "glitch"],
+  "supportedActions": [
+    "localEdges",
+    "localLines",
+    "foregroundBackground",
+    "aura",
+    "trail",
+    "spotlight",
+    "glitch"
+  ],
   "supportedBlendModes": ["normal", "screen", "multiply", "difference", "overlay"],
   "supportedLabelModes": ["literal", "poetic", "hidden"]
 }
 ```
 
-For Phase 4B, add:
+For the foreground/background slice of Phase 4B, `foregroundBackground` is the new supported action. It is scene-level: the analyzer computes one full-frame foreground mask per frame when any active rule includes this action, and the renderer deduplicates identical actions across matched objects.
 
 ```json
-"supportedActions": [
+{
+  "type": "foregroundBackground",
+  "opacity": 0.78,
+  "foregroundColor": [126, 240, 197],
+  "backgroundOpacity": 0.42,
+  "backgroundColor": [8, 12, 18],
+  "learningRate": 0.04,
+  "glow": 0.32
+}
+```
+
+The full Phase 4B supported-action target is:
+
+```json
+[
   "localEdges",
   "localLines",
+  "foregroundBackground",
   "aura",
   "trail",
   "spotlight",
@@ -317,6 +347,14 @@ const ACTION_DEFAULTS = {
     color: [185, 225, 255],
     thickness: 0.25,
     jitter: 0.05
+  },
+  foregroundBackground: {
+    opacity: 0.65,
+    foregroundColor: [126, 240, 197],
+    backgroundOpacity: 0.35,
+    backgroundColor: [8, 12, 18],
+    learningRate: 0.04,
+    glow: 0.25
   },
   aura: {
     opacity: 0.5,
@@ -620,7 +658,85 @@ Reset frozen boxes when:
 - The camera size changes.
 - The object disappears for too long.
 
-## 18. Color Variety
+## 18. Phase 4B: `foregroundBackground`
+
+### Why
+
+Foreground/background separation gives the planner one action that can affect the whole scene while still staying inside a fixed safe vocabulary. It lets prompts like "separate me from the room" or "make the moving foreground radioactive" produce a strong visual change without allowing arbitrary segmentation code.
+
+This follows the OpenCV background-subtraction pattern: keep a background-subtractor object alive across frames, feed each frame to `apply()`, and render the resulting foreground mask.
+
+### Schema
+
+```ts
+{
+  type: "foregroundBackground";
+  opacity: number;
+  foregroundColor: [number, number, number];
+  backgroundOpacity: number;
+  backgroundColor: [number, number, number];
+  learningRate: number;
+  glow: number;
+}
+```
+
+All numbers are clamped to `0..1`; RGB arrays are clamped to `0..255`.
+
+`learningRate` maps directly to OpenCV's `apply(..., learningRate)` value. Low values keep the learned background stable; high values adapt quickly.
+
+### Analysis
+
+Create `analysis/foregroundBackground.js`.
+
+Use OpenCV.js:
+
+```js
+const subtractor = new cv.BackgroundSubtractorMOG2(500, 16, false);
+subtractor.apply(src, fgmask, learningRate);
+```
+
+Implementation details:
+
+- Keep one `BackgroundSubtractorMOG2` instance alive across frames.
+- Recreate the subtractor if the camera size changes.
+- Read `captureCanvas` into a Mat only when the active plan includes `foregroundBackground`.
+- Threshold the output mask to binary.
+- Apply a small morphological open + close pass to reduce webcam noise.
+- Return a scene-level mask, not object-local geometry.
+
+```ts
+type ForegroundBackgroundGeometry = {
+  foregroundMask: ImageData;
+};
+```
+
+Reset the subtractor when:
+
+- The active plan changes.
+- The camera size changes.
+- The OpenCV module is disposed/reloaded.
+
+### Renderer
+
+Add `render/actions/foregroundBackground.js`.
+
+Render order:
+
+- Draw source + global tint.
+- Apply `foregroundBackground`.
+- Draw trails.
+- Draw object-local edges/lines.
+- Draw spotlight/aura/glitch, labels, grain.
+
+Because the mask is scene-level, `actionRenderer` should deduplicate identical `foregroundBackground` actions across matched objects. A fallback rule with an empty selector can still trigger it, but it should render once per distinct action.
+
+Rendering behavior:
+
+- Tint/dim background by filling the frame with `backgroundColor`, cutting the foreground mask out, and compositing at `backgroundOpacity * intensity`.
+- Tint foreground by recoloring the mask with `foregroundColor`, then draw it with `screen` blend at `opacity * intensity`.
+- Use `glow` as a shadow blur around the foreground pass.
+
+## 19. Color Variety
 
 The current implementation already permits arbitrary RGB colors. The limitation is not technical, it is prompt/schema guidance.
 
@@ -639,7 +755,7 @@ const PALETTE_HINTS = {
 
 Do not expose palette names as renderer inputs unless desired. The LLM can simply use these as examples and still return RGB arrays.
 
-## 19. Safety Limits
+## 20. Safety Limits
 
 Recommended caps:
 
@@ -657,7 +773,7 @@ Renderer fallback:
 - Empty rules: draw neutral preview or a mild global style.
 - Planner timeout: keep current plan.
 
-## 20. Definition Of Done
+## 21. Definition Of Done
 
 Phase 4A is done when:
 
@@ -673,7 +789,8 @@ Phase 4B is done when:
 
 - `localDepth` can be applied inside object boxes.
 - `freezeBox` can hold object crops as persistent artifacts.
-- Both new actions are included in validation and prompt schema.
+- `foregroundBackground` can separate moving foreground from learned background with OpenCV.js MOG2.
+- All three 4B actions are included in validation and prompt schema.
 - The LLM can choose them from natural language.
 
 Phase 4C is done when:
@@ -681,7 +798,7 @@ Phase 4C is done when:
 - Scene signals are included in the prompt payload.
 - Prompts like "make the largest object a relic" or "make devices poisonous" work reliably.
 
-## 21. Recommended Build Order
+## 22. Recommended Build Order
 
 1. Implement `validateActionPlan()`.
 2. Add prompt UI and a local mock planner.
@@ -689,8 +806,9 @@ Phase 4C is done when:
 4. Add scene signals.
 5. Add backend route.
 6. Replace mock planner with real endpoint.
-7. Add `localDepth`.
-8. Add `freezeBox`.
-9. Update docs and README.
+7. Add `foregroundBackground`.
+8. Add `localDepth`.
+9. Add `freezeBox`.
+10. Update docs and README.
 
 This keeps the risk low: first prove arbitrary validated plans, then add richer actions.

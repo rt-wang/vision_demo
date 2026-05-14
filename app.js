@@ -1,5 +1,5 @@
 /*
- * Latent Canvas — Phase 4A.
+ * Latent Canvas — Phase 4B foreground/background extension.
  *
  * Pipeline:
  *   getUserMedia → hidden <video>
@@ -12,23 +12,37 @@
  *                 - source = "llm"     → drawStyledPlan(state.currentPlan)
  *                 - source = "preset"  → drawStyledPlan(preset.plan)  or neutral
  *
- * Phase 4A adds the prompt → plan loop. The frontend POSTs context to
+ * Phase 4A added the prompt → plan loop. The frontend POSTs context to
  * /api/plan; planClient falls back to a local deterministic mock when the
  * backend isn't reachable so the prompt UI is functional even on the static
  * dev server. Bad model output cannot crash anything — validateActionPlan
  * sanitizes before the renderer ever sees the plan, and on hard failure we
  * keep the previous plan.
+ *
+ * Phase 4B adds `foregroundBackground`, an optional scene-level MOG2 mask
+ * action that runs only when the active plan includes it.
  */
 
 import { loadDetector, detect } from "./analysis/objectDetector.js";
 import { createTracker } from "./analysis/objectTracker.js";
 import { computeObjectGeometry, isReady as isCvReady } from "./analysis/objectLocalCv.js";
+import {
+  computeForegroundBackground,
+  isReady as isForegroundBackgroundReady,
+  resetForegroundBackgroundModel,
+} from "./analysis/foregroundBackground.js";
 import { computeSceneSignals } from "./analysis/sceneSignals.js";
 import { drawNeutralPreview } from "./render/neutralPreview.js";
 import { drawStyledPlan } from "./render/actionRenderer.js";
 import { resetTrail } from "./render/actions/trail.js";
+import { resetFrozenBoxes } from "./render/actions/freezeBox.js";
 import { PRESETS, findPreset } from "./llm/defaultPlans.js";
 import { requestActionPlan } from "./llm/planClient.js";
+import {
+  SUPPORTED_ACTIONS,
+  SUPPORTED_BLEND_MODES,
+  SUPPORTED_LABEL_MODES,
+} from "./llm/actionPlanSchema.js";
 
 const video = document.getElementById("video");
 const outputCanvas = document.getElementById("output");
@@ -66,6 +80,7 @@ const state = {
   tracker: createTracker(),
   objects: [],
   geometries: new Map(),
+  foregroundBackground: null,
   sceneSignals: null,
 
   // Active plan resolution.
@@ -130,10 +145,21 @@ async function setupCamera() {
 function sizeCanvases() {
   const w = video.videoWidth || 1280;
   const h = video.videoHeight || 720;
+  const resized =
+    outputCanvas.width !== w ||
+    outputCanvas.height !== h ||
+    captureCanvas.width !== w ||
+    captureCanvas.height !== h;
   outputCanvas.width = w;
   outputCanvas.height = h;
   captureCanvas.width = w;
   captureCanvas.height = h;
+  if (resized) {
+    // Held crops and the MOG2 background model are sized to the previous
+    // frame — bail out so the next frame rebuilds them at the new size.
+    resetFrozenBoxes();
+    resetForegroundBackgroundModel();
+  }
 }
 
 function captureFrame() {
@@ -176,6 +202,35 @@ function activePlanTitle() {
   return p.plan ? p.plan.title : p.title;
 }
 
+function firstActionOfType(plan, type) {
+  for (const rule of plan?.objectRules || []) {
+    for (const action of rule.actions || []) {
+      if (action.type === type) return action;
+    }
+  }
+  return null;
+}
+
+// MOG2 needs to run whenever the active plan asks for the foreground mask —
+// either directly via `foregroundBackground`, or indirectly via a `localDepth`
+// with `onlyForeground` set so it can clip its colormap to the silhouette.
+// Prefer the foregroundBackground action's learningRate when present.
+function planForegroundMaskNeed(plan) {
+  let needed = false;
+  let learningRate = 0.04;
+  for (const rule of plan?.objectRules || []) {
+    for (const action of rule.actions || []) {
+      if (action.type === "foregroundBackground") {
+        needed = true;
+        learningRate = action.learningRate;
+      } else if (action.type === "localDepth" && action.onlyForeground > 0.5) {
+        needed = true;
+      }
+    }
+  }
+  return { needed, learningRate };
+}
+
 function refreshPlanTitle() {
   ui.planTitle.textContent = activePlanTitle();
 }
@@ -202,6 +257,8 @@ function updateIntensitySliderFill(value) {
 function announcePlanSwitch() {
   state.presetSwitchAt = performance.now();
   resetTrail();
+  resetForegroundBackgroundModel();
+  resetFrozenBoxes();
 }
 
 function selectPreset(id) {
@@ -304,9 +361,9 @@ async function submitPrompt() {
     currentPlan: state.currentPlan
       ? { title: state.currentPlan.title }
       : null,
-    supportedActions: ["localEdges", "localLines", "aura", "trail", "spotlight", "glitch"],
-    supportedBlendModes: ["normal", "screen", "multiply", "difference", "overlay"],
-    supportedLabelModes: ["literal", "poetic", "hidden"],
+    supportedActions: SUPPORTED_ACTIONS,
+    supportedBlendModes: SUPPORTED_BLEND_MODES,
+    supportedLabelModes: SUPPORTED_LABEL_MODES,
   };
 
   try {
@@ -424,16 +481,21 @@ async function loop() {
         canvasHeight: captureCanvas.height,
         now,
       });
-      state.geometries = isCvReady()
-        ? computeObjectGeometry(captureCanvas, state.objects)
-        : new Map();
       state.sceneSignals = computeSceneSignals(state.objects);
+      const plan = activePlan();
+      const needsDepth = !!firstActionOfType(plan, "localDepth");
+      state.geometries = isCvReady()
+        ? computeObjectGeometry(captureCanvas, state.objects, { includeDepth: needsDepth })
+        : new Map();
+      const fgNeed = planForegroundMaskNeed(plan);
+      state.foregroundBackground = fgNeed.needed && isForegroundBackgroundReady()
+        ? computeForegroundBackground(captureCanvas, { learningRate: fgNeed.learningRate })
+        : null;
 
       const target = effectiveTargetIntensity(now);
       state.currentIntensity += (target - state.currentIntensity) * INTENSITY_SMOOTHING;
       if (state.currentIntensity < 0.001) state.currentIntensity = 0;
 
-      const plan = activePlan();
       if (plan && state.currentIntensity > 0.01) {
         drawStyledPlan(
           outputCtx,
@@ -441,7 +503,12 @@ async function loop() {
           state.objects,
           state.geometries,
           plan,
-          { intensity: state.currentIntensity, timeMs: now, hideFeed: state.hideFeed },
+          {
+            intensity: state.currentIntensity,
+            timeMs: now,
+            hideFeed: state.hideFeed,
+            foregroundBackground: state.foregroundBackground,
+          },
         );
       } else {
         drawNeutralPreview(outputCtx, captureCanvas, state.objects, state.geometries, { hideFeed: state.hideFeed });

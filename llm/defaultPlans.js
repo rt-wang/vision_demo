@@ -16,49 +16,6 @@ export const PRESETS = [
     plan: null,
   },
   {
-    id: "sacred-contamination",
-    title: "Sacred Contamination",
-    plan: {
-      title: "Sacred Contamination",
-      globalStyle: {
-        sourceOpacity: 0.78,
-        tint: [195, 215, 185],
-        contrast: 0.58,
-        saturation: 0.46,
-        grain: 0.14,
-        trailLength: 0.18,
-        blendMode: "screen",
-      },
-      objectRules: [
-        {
-          selector: { classes: ["person"], minScore: 0.4 },
-          label: { mode: "poetic", text: "witness" },
-          actions: [
-            { type: "aura", opacity: 0.85, color: [235, 210, 130], radius: 0.45, pulse: 0.22 },
-            { type: "spotlight", opacity: 0.7, backgroundDim: 0.32, feather: 0.55 },
-          ],
-        },
-        {
-          selector: {
-            classes: ["laptop", "cell phone", "tv", "keyboard", "remote", "mouse"],
-            minScore: 0.4,
-          },
-          label: { mode: "poetic", text: "poison engine" },
-          actions: [
-            { type: "glitch", opacity: 0.72, sliceAmount: 0.5, displacement: 0.32 },
-            {
-              type: "localEdges",
-              opacity: 0.88,
-              glow: 0.55,
-              color: [90, 255, 150],
-              thickness: 0.35,
-            },
-          ],
-        },
-      ],
-    },
-  },
-  {
     id: "cold-mirror",
     title: "Cold Mirror",
     plan: {
@@ -90,6 +47,118 @@ export const PRESETS = [
               glow: 0.35,
               color: [205, 235, 255],
               thickness: 0.2,
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    id: "thermal-relic",
+    title: "Thermal Relic",
+    plan: {
+      title: "Thermal Relic",
+      globalStyle: {
+        sourceOpacity: 0.42,
+        tint: [255, 180, 120],
+        contrast: 0.66,
+        saturation: 0.42,
+        grain: 0.22,
+        trailLength: 0,
+        blendMode: "screen",
+      },
+      objectRules: [
+        {
+          selector: { classes: ["person"], minScore: 0.4 },
+          label: { mode: "poetic", text: "thermal body" },
+          actions: [
+            {
+              type: "localDepth",
+              opacity: 0.85,
+              palette: "inferno",
+              invert: 0,
+              relief: 0.5,
+              glow: 0.35,
+            },
+            {
+              type: "localEdges",
+              opacity: 0.55,
+              glow: 0.42,
+              color: [255, 200, 120],
+              thickness: 0.24,
+            },
+          ],
+        },
+        {
+          selector: {
+            classes: ["laptop", "cell phone", "tv", "keyboard", "remote", "mouse", "book", "cup", "bottle"],
+            minScore: 0.35,
+          },
+          label: { mode: "poetic", text: "artifact" },
+          actions: [
+            {
+              type: "freezeBox",
+              opacity: 0.72,
+              decay: 0.03,
+              jitter: 0.04,
+              reframe: 0.0,
+              blendMode: "screen",
+            },
+            {
+              type: "localDepth",
+              opacity: 0.6,
+              palette: "bone",
+              invert: 0,
+              relief: 0.55,
+              glow: 0.18,
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    id: "thermal-moving-body",
+    title: "Thermal Moving Body",
+    plan: {
+      title: "Thermal Moving Body",
+      globalStyle: {
+        sourceOpacity: 0.32,
+        tint: [40, 30, 60],
+        contrast: 0.7,
+        saturation: 0.35,
+        grain: 0.12,
+        trailLength: 0,
+        blendMode: "multiply",
+      },
+      objectRules: [
+        {
+          selector: { classes: ["person"], minScore: 0.4 },
+          label: { mode: "poetic", text: "heat" },
+          actions: [
+            {
+              type: "localDepth",
+              opacity: 0.98,
+              palette: "inferno",
+              invert: 0,
+              relief: 0.55,
+              glow: 0.5,
+              onlyForeground: 1,
+            },
+          ],
+        },
+        {
+          selector: {},
+          label: { mode: "hidden" },
+          actions: [
+            {
+              type: "foregroundBackground",
+              opacity: 0.0,
+              foregroundColor: [255, 255, 255],
+              backgroundOpacity: 0.55,
+              backgroundColor: [4, 4, 8],
+              learningRate: 0.02,
+              glow: 0,
             },
           ],
         },

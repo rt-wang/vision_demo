@@ -10,6 +10,9 @@
 export const SUPPORTED_ACTIONS = [
   "localEdges",
   "localLines",
+  "localDepth",
+  "foregroundBackground",
+  "freezeBox",
   "aura",
   "trail",
   "spotlight",
@@ -25,6 +28,8 @@ export const SUPPORTED_BLEND_MODES = [
 ];
 
 export const SUPPORTED_LABEL_MODES = ["literal", "poetic", "hidden"];
+
+export const SUPPORTED_DEPTH_PALETTES = ["inferno", "bone", "ocean", "magma"];
 
 export const clamp01 = (n) => {
   const v = Number(n);

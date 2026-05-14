@@ -25,6 +25,8 @@ let _src = null;
 let _gray = null;
 let _edges = null;
 let _lines = null;
+let _depthGray = null;
+let _depthFiltered = null;
 
 function disposeMat(m) {
   if (m && !m.isDeleted?.()) {
@@ -37,12 +39,19 @@ export function disposeLocalCvMats() {
   disposeMat(_gray); _gray = null;
   disposeMat(_edges); _edges = null;
   disposeMat(_lines); _lines = null;
+  disposeMat(_depthGray); _depthGray = null;
+  disposeMat(_depthFiltered); _depthFiltered = null;
 }
 
 function ensureScratchMats(cv) {
   if (!_gray) _gray = new cv.Mat();
   if (!_edges) _edges = new cv.Mat();
   if (!_lines) _lines = new cv.Mat();
+}
+
+function ensureDepthMats(cv) {
+  if (!_depthGray) _depthGray = new cv.Mat();
+  if (!_depthFiltered) _depthFiltered = new cv.Mat();
 }
 
 function clampRect(bbox, W, H) {
@@ -77,16 +86,34 @@ export function isReady() {
   return !!(window.cv && window.cv.Mat);
 }
 
+function depthMatToGrayData(mat) {
+  // mat is CV_8UC1 — copy into a fresh typed array sized exactly to the crop.
+  // We can't hand the underlying Mat data straight to the renderer because
+  // OpenCV reuses the buffer on the next call.
+  const w = mat.cols;
+  const h = mat.rows;
+  const out = new Uint8ClampedArray(w * h);
+  out.set(mat.data);
+  return out;
+}
+
 /**
  * Run object-local CV for each non-stale tracked object.
  * Returns a Map<objectId, ObjectGeometry>.
+ *
+ * `options.includeDepth` triggers the localDepth analysis: bilateral filter +
+ * histogram equalization on the grayscale crop, output as a single-channel
+ * Uint8 buffer. Palette/colormap is applied at render time so each rule can
+ * pick its own palette without re-running CV.
  */
-export function computeObjectGeometry(captureCanvas, objects) {
+export function computeObjectGeometry(captureCanvas, objects, options = {}) {
   const cv = window.cv;
   const result = new Map();
   if (!cv || !cv.Mat) return result;
 
   ensureScratchMats(cv);
+  const includeDepth = !!options.includeDepth;
+  if (includeDepth) ensureDepthMats(cv);
 
   // Read the full frame once per frame. OpenCV.js imread always allocates a
   // new Mat, so we delete the previous one to keep the heap flat.
@@ -139,14 +166,32 @@ export function computeObjectGeometry(captureCanvas, objects) {
 
       const localEdges = edgeMatToImageData(_edges);
 
-      result.set(obj.id, {
+      const geom = {
         objectId: obj.id,
         bbox: rect,
         localEdges,
         localEdgesOrigin: [rect.x, rect.y],
         localLines,
         localMotionAmount: 0,
-      });
+      };
+
+      if (includeDepth) {
+        // Bilateral filter needs a fresh grayscale source — _gray is already
+        // blurred from the Canny pass. Re-derive grayscale into _depthGray.
+        cv.cvtColor(roi, _depthGray, cv.COLOR_RGBA2GRAY);
+        try {
+          cv.bilateralFilter(_depthGray, _depthFiltered, 5, 50, 50, cv.BORDER_DEFAULT);
+          cv.equalizeHist(_depthFiltered, _depthFiltered);
+        } catch (_) {
+          // Some OpenCV.js builds omit bilateralFilter — fall back to equalize
+          // on the grayscale crop directly so localDepth still renders.
+          cv.equalizeHist(_depthGray, _depthFiltered);
+        }
+        geom.localDepth = depthMatToGrayData(_depthFiltered);
+        geom.localDepthSize = { width: _depthFiltered.cols, height: _depthFiltered.rows };
+      }
+
+      result.set(obj.id, geom);
     } finally {
       disposeMat(roi);
     }

@@ -10,6 +10,7 @@ import {
   SUPPORTED_ACTIONS,
   SUPPORTED_BLEND_MODES,
   SUPPORTED_LABEL_MODES,
+  SUPPORTED_DEPTH_PALETTES,
 } from "./actionPlanSchema.js";
 
 export const SYSTEM_PROMPT = `You are the action planner for Latent Canvas, a live object-aware visual instrument.
@@ -60,12 +61,27 @@ const SCHEMA_DESCRIPTION = `ActionPlan schema:
 CreativeAction is one of:
   { "type": "localEdges", "opacity": 0..1, "glow": 0..1, "color": [r,g,b], "thickness": 0..1 }
   { "type": "localLines", "opacity": 0..1, "color": [r,g,b], "thickness": 0..1, "jitter": 0..1 }
+  { "type": "localDepth", "opacity": 0..1, "palette": one of ${JSON.stringify(SUPPORTED_DEPTH_PALETTES)}, "invert": 0..1, "relief": 0..1, "glow": 0..1, "onlyForeground": 0..1 }
+  { "type": "foregroundBackground", "opacity": 0..1, "foregroundColor": [r,g,b], "backgroundOpacity": 0..1, "backgroundColor": [r,g,b], "learningRate": 0..1, "glow": 0..1 }
+  { "type": "freezeBox",  "opacity": 0..1, "decay": 0..1, "jitter": 0..1, "reframe": 0..1, "blendMode": one of ${JSON.stringify(SUPPORTED_BLEND_MODES)} }
   { "type": "aura",       "opacity": 0..1, "color": [r,g,b], "radius": 0..1,    "pulse": 0..1 }
   { "type": "trail",      "opacity": 0..1, "length": 0..1,   "smear": 0..1 }
   { "type": "spotlight",  "opacity": 0..1, "backgroundDim": 0..1, "feather": 0..1 }
   { "type": "glitch",     "opacity": 0..1, "sliceAmount": 0..1, "displacement": 0..1 }
 
 Allowed action types: ${JSON.stringify(SUPPORTED_ACTIONS)}.
+
+Notes:
+- localDepth colormaps an object's interior using a hand-tuned palette. Use it
+  for "material", "depth", "relic", "scan", "fossil" prompts. decay-style
+  prompts about evolving textures should prefer trail or freezeBox.
+- localDepth.onlyForeground=1 clips the colormap to the scene-level motion
+  silhouette so only moving body pixels get color (thermal-imaging look). Use
+  this for "thermal", "moving body", "silhouette", "infrared" prompts. The
+  background of the bbox stays untouched.
+- freezeBox pins an object's crop as a held memory tile. decay≈0 keeps the
+  original frame forever; decay≈0.1 lets it evolve slowly. Use it for
+  "frozen", "preserved", "memory", "captured", "pinned" prompts.
 
 Example output:
 {

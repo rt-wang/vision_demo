@@ -177,6 +177,15 @@ type CreativeAction =
       jitter: number;
     }
   | {
+      type: "foregroundBackground";
+      opacity: number;
+      foregroundColor: [number, number, number];
+      backgroundOpacity: number;
+      backgroundColor: [number, number, number];
+      learningRate: number;
+      glow: number;
+    }
+  | {
       type: "aura";
       opacity: number;
       color: [number, number, number];
@@ -280,14 +289,16 @@ Styled render applies the current `ActionPlan`.
 - Draw source video with global style.
 - Match each detected object against object rules.
 - Run the required object-local CV analyses.
+- Run scene-level foreground/background subtraction only when an action asks for it.
 - Render actions in stable order:
   1. Source video
   2. Background dim/tint
-  3. Trails
-  4. Object-local edges/lines/contours
-  5. Aura/spotlight/glitch
-  6. Labels
-  7. Grain/vignette
+  3. Foreground/background masks
+  4. Trails
+  5. Object-local edges/lines/contours
+  6. Aura/spotlight/glitch
+  7. Labels
+  8. Grain/vignette
 
 ## 9. Phased Build Plan
 
@@ -439,7 +450,7 @@ Request payload:
     "averageMotion": 0.18,
     "sceneCrowdedness": 0.42
   },
-  "supportedActions": ["localEdges", "localLines", "aura", "trail", "spotlight", "glitch"]
+  "supportedActions": ["localEdges", "localLines", "foregroundBackground", "aura", "trail", "spotlight", "glitch"]
 }
 ```
 
@@ -524,6 +535,7 @@ vision_demo/
     objectTracker.js
     objectLocalCv.js
     sceneSignals.js
+    foregroundBackground.js
   render/
     actionRenderer.js
     neutralPreview.js
@@ -531,6 +543,7 @@ vision_demo/
       aura.js
       localEdges.js
       localLines.js
+      foregroundBackground.js
       spotlight.js
       trail.js
       glitch.js

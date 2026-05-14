@@ -17,6 +17,7 @@
 import {
   SUPPORTED_ACTIONS,
   SUPPORTED_LABEL_MODES,
+  SUPPORTED_DEPTH_PALETTES,
   clamp01,
   clampColor,
   defaultGlobalStyle,
@@ -50,10 +51,41 @@ export const KNOWN_COCO_CLASSES = new Set([
 const ACTION_DEFAULTS = {
   localEdges: { opacity: 0.7, glow: 0.35, color: [126, 240, 197], thickness: 0.25 },
   localLines: { opacity: 0.7, color: [185, 225, 255], thickness: 0.25, jitter: 0.05 },
+  localDepth: {
+    opacity: 0.7,
+    palette: "inferno",
+    invert: 0,
+    relief: 0.4,
+    glow: 0.3,
+    // 0 = colormap the whole bbox, 1 = clip to scene-level MOG2 foreground
+    // mask so only moving silhouette pixels inside the bbox get color.
+    onlyForeground: 0,
+  },
+  foregroundBackground: {
+    opacity: 0.65,
+    foregroundColor: [126, 240, 197],
+    backgroundOpacity: 0.35,
+    backgroundColor: [8, 12, 18],
+    learningRate: 0.04,
+    glow: 0.25,
+  },
+  freezeBox: {
+    opacity: 0.78,
+    decay: 0.06,
+    jitter: 0.0,
+    reframe: 0.0,
+    blendMode: "normal",
+  },
   aura:       { opacity: 0.5, color: [235, 210, 130], radius: 0.35, pulse: 0.2 },
   trail:      { opacity: 0.45, length: 0.45, smear: 0.18 },
   spotlight:  { opacity: 0.5, backgroundDim: 0.3, feather: 0.5 },
   glitch:     { opacity: 0.55, sliceAmount: 0.4, displacement: 0.25 },
+};
+
+// Enum fields per action — sanitizeAction picks these up and falls back to
+// each action's default when the LLM returns an unsupported value.
+const ACTION_ENUM_FIELDS = {
+  localDepth: { palette: SUPPORTED_DEPTH_PALETTES },
 };
 
 function stripCodeFences(s) {
@@ -115,12 +147,22 @@ function sanitizeAction(input) {
   if (!SUPPORTED_ACTIONS.includes(type)) return null;
   const def = ACTION_DEFAULTS[type];
   if (!def) return null;
+  const enums = ACTION_ENUM_FIELDS[type] || {};
   const out = { type };
   for (const [k, v] of Object.entries(def)) {
-    if (Array.isArray(v)) {
-      out[k] = clampColor(Array.isArray(input[k]) ? input[k] : v);
+    const inVal = input[k];
+    if (enums[k]) {
+      out[k] = typeof inVal === "string" && enums[k].includes(inVal) ? inVal : v;
+    } else if (Array.isArray(v)) {
+      out[k] = clampColor(Array.isArray(inVal) ? inVal : v);
+    } else if (typeof v === "string") {
+      // Non-enum string field — only `blendMode` lives here today, but treat
+      // it generally so future per-action string fields don't silently leak
+      // through.
+      if (k === "blendMode") out[k] = blendMode(inVal || v);
+      else out[k] = typeof inVal === "string" ? inVal : v;
     } else {
-      out[k] = clamp01(input[k] ?? v);
+      out[k] = clamp01(inVal ?? v);
     }
   }
   return out;

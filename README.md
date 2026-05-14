@@ -1,8 +1,8 @@
 # Latent Canvas
 
-A live, object-aware creative-vision instrument that runs entirely in the browser. Your webcam feeds an object detector (COCO-SSD), each detected object becomes its own small canvas for object-local computer vision (OpenCV.js — Canny edges, Hough lines), and a deterministic action renderer composites styled effects (aura, spotlight, glitch, trails, edges, lines) per object based on an `ActionPlan` — either a hardcoded preset or one generated from a natural-language prompt by an LLM.
+A live, object-aware creative-vision instrument that runs entirely in the browser. Your webcam feeds an object detector (COCO-SSD), each detected object becomes its own small canvas for object-local computer vision (OpenCV.js — Canny edges, Hough lines), and a deterministic action renderer composites styled effects (aura, spotlight, glitch, trails, edges, lines, foreground/background masks) per object based on an `ActionPlan` — either a hardcoded preset or one generated from a natural-language prompt by an LLM.
 
-Phase 1–4A of `object-local-cv-design.md` / `phase_4_implementation.md` are implemented. Phases 4B–6 are roadmap.
+Phase 1–4A plus the Phase 4B `foregroundBackground` action are implemented. The remaining Phase 4B actions and Phases 4C–6 are roadmap.
 
 ---
 
@@ -103,11 +103,12 @@ vision_demo/
     objectDetector.js     # COCO-SSD wrapper
     objectTracker.js      # per-class IoU tracking + EMA bbox smoothing
     objectLocalCv.js      # per-bbox Canny + Hough Lines (OpenCV.js)
+    foregroundBackground.js # full-frame MOG2 foreground mask (OpenCV.js)
     sceneSignals.js       # summary stats sent to the planner
   render/
     neutralPreview.js     # inspection layer (boxes, labels, faint geometry)
     actionRenderer.js     # orchestrator (design's render order)
-    actions/              # aura, localEdges, localLines, spotlight, trail, glitch
+    actions/              # aura, localEdges, localLines, foregroundBackground, spotlight, trail, glitch
   llm/
     actionPlanSchema.js   # action/blend whitelist + clamp helpers
     validateActionPlan.js # parses + sanitizes any plan before rendering
@@ -142,7 +143,7 @@ vision_demo/
 | 2 | ✅ | Object-local CV: Canny + Hough run on each tracked bbox crop only — background never analyzed. |
 | 3 | ✅ | Deterministic action vocabulary, hardcoded presets, intensity slider, smooth transitions. |
 | 4A | ✅ | Prompt → validated ActionPlan loop with mock + Anthropic backends. |
-| 4B | ⏳ | `localDepth` + `freezeBox` actions. |
+| 4B | ⏳ | `foregroundBackground` implemented; `localDepth` + `freezeBox` remaining. |
 | 4C | ⏳ | Richer scene signals in the planner payload. |
 | 5 | ⏳ | Click-to-select object, capped detector FPS, conditional CV. |
 | 6 | ⏳ | Scene relationships: distance, proximity, tension lines, `nearClass`. |
