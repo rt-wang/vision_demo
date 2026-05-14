@@ -217,9 +217,11 @@ function firstActionOfType(plan, type) {
 }
 
 // MOG2 needs to run whenever the active plan asks for the foreground mask —
-// either directly via `foregroundBackground`, or indirectly via a `localDepth`
-// with `onlyForeground` set so it can clip its colormap to the silhouette.
-// Prefer the foregroundBackground action's learningRate when present.
+// either directly via `foregroundBackground`, indirectly via a `localDepth`
+// with `onlyForeground` set so it can clip its colormap to the silhouette, or
+// via a `trail` which uses the mask to deposit body-shaped smears instead of
+// rectangular ones. Prefer the foregroundBackground action's learningRate when
+// present.
 function planForegroundMaskNeed(plan) {
   let needed = false;
   let learningRate = 0.04;
@@ -229,6 +231,8 @@ function planForegroundMaskNeed(plan) {
         needed = true;
         learningRate = action.learningRate;
       } else if (action.type === "localDepth" && action.onlyForeground > 0.5) {
+        needed = true;
+      } else if (action.type === "trail") {
         needed = true;
       }
     }

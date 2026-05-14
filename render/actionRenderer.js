@@ -220,8 +220,9 @@ export function drawStyledPlan(ctx, captureCanvas, objects, geometries, plan, op
     const avgOpacity = opSum / trailEntries.length;
     const avgSmear = smSum / trailEntries.length;
     fadeTrailCanvas(w, h, avgLength);
+    const fgMask = opts.foregroundBackground?.foregroundMask;
     for (const { obj } of trailEntries) {
-      paintObjectIntoTrail(obj, captureCanvas, avgSmear);
+      paintObjectIntoTrail(obj, captureCanvas, avgSmear, fgMask);
     }
     compositeTrail(ctx, avgOpacity * intensity);
   }
