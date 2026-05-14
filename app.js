@@ -69,6 +69,7 @@ const ui = {
   inspectorToggle: document.getElementById("inspectorToggle"),
   inspector: document.getElementById("inspector"),
   inspectorClose: document.getElementById("inspectorClose"),
+  inspectorCopy: document.getElementById("inspectorCopy"),
   inspectorSource: document.getElementById("inspectorSource"),
   inspectorMeta: document.getElementById("inspectorMeta"),
   inspectorJson: document.getElementById("inspectorJson"),
@@ -329,6 +330,39 @@ function refreshInspector() {
   }
 }
 
+async function copyInspectorJson() {
+  const text = ui.inspectorJson.textContent || "{}";
+  let copied = false;
+  try {
+    // navigator.clipboard requires a secure context — falls through to the
+    // execCommand path on plain http://localhost dev sessions.
+    if (navigator.clipboard && window.isSecureContext) {
+      await navigator.clipboard.writeText(text);
+      copied = true;
+    } else {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.setAttribute("readonly", "");
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      copied = document.execCommand("copy");
+      document.body.removeChild(ta);
+    }
+  } catch (err) {
+    console.warn("[inspector] copy failed:", err);
+  }
+
+  const label = ui.inspectorCopy;
+  label.textContent = copied ? "copied" : "failed";
+  label.classList.toggle("is-copied", copied);
+  setTimeout(() => {
+    label.textContent = "copy";
+    label.classList.remove("is-copied");
+  }, 1200);
+}
+
 function setInspectorOpen(open) {
   state.inspectorOpen = open;
   ui.inspector.classList.toggle("is-open", open);
@@ -419,6 +453,7 @@ function wireUi() {
 
   ui.inspectorToggle.addEventListener("click", () => setInspectorOpen(!state.inspectorOpen));
   ui.inspectorClose.addEventListener("click", () => setInspectorOpen(false));
+  ui.inspectorCopy.addEventListener("click", copyInspectorJson);
   ui.feedToggle.addEventListener("click", () => setHideFeed(!state.hideFeed));
 
   // Keyboard shortcuts.

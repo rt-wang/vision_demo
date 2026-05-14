@@ -415,6 +415,30 @@ body::before {
 .inspector__source.is-llm { color: var(--accent); }
 .inspector__source.is-mock { color: var(--warn); }
 .inspector__source.is-preset { color: var(--accent-2); }
+.inspector__copy {
+  appearance: none;
+  background: transparent;
+  border: 1px solid var(--line);
+  color: var(--fg-dim);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  line-height: 1;
+  padding: 4px 8px;
+  cursor: pointer;
+  border-radius: 6px;
+  transition: color 160ms ease, background-color 160ms ease, border-color 160ms ease;
+}
+.inspector__copy:hover {
+  color: var(--fg);
+  border-color: var(--fg-dim);
+  background: rgba(255, 255, 255, 0.05);
+}
+.inspector__copy.is-copied {
+  color: var(--accent);
+  border-color: var(--accent);
+}
 .inspector__close {
   appearance: none;
   background: transparent;
