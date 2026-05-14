@@ -38,6 +38,7 @@ import { resetTrail } from "./render/actions/trail.js";
 import { resetFrozenBoxes } from "./render/actions/freezeBox.js";
 import { PRESETS, findPreset } from "./llm/defaultPlans.js";
 import { requestActionPlan } from "./llm/planClient.js";
+import { validateActionPlan } from "./llm/validateActionPlan.js";
 import {
   SUPPORTED_ACTIONS,
   SUPPORTED_BLEND_MODES,
@@ -70,6 +71,7 @@ const ui = {
   inspector: document.getElementById("inspector"),
   inspectorClose: document.getElementById("inspectorClose"),
   inspectorCopy: document.getElementById("inspectorCopy"),
+  inspectorApply: document.getElementById("inspectorApply"),
   inspectorSource: document.getElementById("inspectorSource"),
   inspectorMeta: document.getElementById("inspectorMeta"),
   inspectorJson: document.getElementById("inspectorJson"),
@@ -188,17 +190,19 @@ function tickFps(now) {
   }
 }
 
-function isLlmSource(source) {
-  return source === "llm" || source === "mock";
+// "preset" reads from the preset table; everything else ("llm", "mock", "edit")
+// reads from state.currentPlan. Any new generated-plan source should land here.
+function hasGeneratedPlan(source) {
+  return source !== "preset";
 }
 
 function activePlan() {
-  if (isLlmSource(state.currentPlanSource) && state.currentPlan) return state.currentPlan;
+  if (hasGeneratedPlan(state.currentPlanSource) && state.currentPlan) return state.currentPlan;
   return findPreset(state.presetId).plan;
 }
 
 function activePlanTitle() {
-  if (isLlmSource(state.currentPlanSource) && state.currentPlan) return state.currentPlan.title;
+  if (hasGeneratedPlan(state.currentPlanSource) && state.currentPlan) return state.currentPlan.title;
   const p = findPreset(state.presetId);
   return p.plan ? p.plan.title : p.title;
 }
@@ -299,12 +303,10 @@ const INSPECTOR_SOURCE_LABEL = {
   preset: "preset",
   llm: "llm",
   mock: "mock",
+  edit: "edit",
 };
 
-function refreshInspector() {
-  const plan = activePlan();
-  ui.inspectorJson.textContent = plan ? JSON.stringify(plan, null, 2) : "{}";
-
+function refreshInspectorMeta() {
   const source = state.currentPlanSource;
   ui.inspectorSource.textContent = INSPECTOR_SOURCE_LABEL[source] || source;
   ui.inspectorSource.className = `inspector__source is-${source}`;
@@ -330,8 +332,19 @@ function refreshInspector() {
   }
 }
 
+function refreshInspectorJson() {
+  const plan = activePlan();
+  ui.inspectorJson.value = plan ? JSON.stringify(plan, null, 2) : "{}";
+  ui.inspectorJson.classList.remove("is-invalid");
+}
+
+function refreshInspector() {
+  refreshInspectorMeta();
+  refreshInspectorJson();
+}
+
 async function copyInspectorJson() {
-  const text = ui.inspectorJson.textContent || "{}";
+  const text = ui.inspectorJson.value || "{}";
   let copied = false;
   try {
     // navigator.clipboard requires a secure context — falls through to the
@@ -359,6 +372,56 @@ async function copyInspectorJson() {
   label.classList.toggle("is-copied", copied);
   setTimeout(() => {
     label.textContent = "copy";
+    label.classList.remove("is-copied");
+  }, 1200);
+}
+
+function applyEditedPlan(plan, warnings) {
+  state.currentPlan = plan;
+  state.currentPlanSource = "edit";
+  state.lastPlanError = null;
+  state.lastPlanWarnings = warnings || [];
+  announcePlanSwitch();
+  refreshPlanTitle();
+  setPresetSelection(null);
+  setPromptStatus("edited", "ok");
+  if (warnings && warnings.length > 0) {
+    console.warn("[plan] edit warnings:", warnings);
+  }
+  refreshInspector();
+}
+
+function applyInspectorEdit() {
+  const text = ui.inspectorJson.value || "";
+  let parsed;
+  try {
+    parsed = JSON.parse(text);
+  } catch (err) {
+    state.lastPlanError = `parse: ${err.message || err}`;
+    state.lastPlanWarnings = [];
+    ui.inspectorJson.classList.add("is-invalid");
+    refreshInspectorMeta();
+    return;
+  }
+
+  const detectedClasses = state.sceneSignals?.classes || [];
+  const v = validateActionPlan(parsed, { detectedClasses });
+  if (!v.ok || !v.plan.objectRules || v.plan.objectRules.length === 0) {
+    state.lastPlanError = (v.errors && v.errors.length > 0)
+      ? v.errors.join(", ")
+      : "no_valid_rules";
+    state.lastPlanWarnings = [];
+    ui.inspectorJson.classList.add("is-invalid");
+    refreshInspectorMeta();
+    return;
+  }
+
+  applyEditedPlan(v.plan, v.errors);
+  const label = ui.inspectorApply;
+  label.textContent = "applied";
+  label.classList.add("is-copied");
+  setTimeout(() => {
+    label.textContent = "apply";
     label.classList.remove("is-copied");
   }, 1200);
 }
@@ -454,6 +517,16 @@ function wireUi() {
   ui.inspectorToggle.addEventListener("click", () => setInspectorOpen(!state.inspectorOpen));
   ui.inspectorClose.addEventListener("click", () => setInspectorOpen(false));
   ui.inspectorCopy.addEventListener("click", copyInspectorJson);
+  ui.inspectorApply.addEventListener("click", applyInspectorEdit);
+  ui.inspectorJson.addEventListener("input", () => {
+    ui.inspectorJson.classList.remove("is-invalid");
+  });
+  ui.inspectorJson.addEventListener("keydown", (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
+      e.preventDefault();
+      applyInspectorEdit();
+    }
+  });
   ui.feedToggle.addEventListener("click", () => setHideFeed(!state.hideFeed));
 
   // Keyboard shortcuts.
@@ -464,8 +537,14 @@ function wireUi() {
       e.preventDefault();
       return;
     }
-    // While the prompt is focused, don't intercept anything else.
+    if (e.key === "Escape" && document.activeElement === ui.inspectorJson) {
+      ui.inspectorJson.blur();
+      e.preventDefault();
+      return;
+    }
+    // While the prompt or JSON editor is focused, don't intercept anything else.
     if (document.activeElement === ui.promptInput) return;
+    if (document.activeElement === ui.inspectorJson) return;
 
     if (e.key === "Escape" && state.inspectorOpen) {
       setInspectorOpen(false);

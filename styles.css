@@ -415,6 +415,7 @@ body::before {
 .inspector__source.is-llm { color: var(--accent); }
 .inspector__source.is-mock { color: var(--warn); }
 .inspector__source.is-preset { color: var(--accent-2); }
+.inspector__source.is-edit { color: var(--accent); }
 .inspector__copy {
   appearance: none;
   background: transparent;
@@ -480,6 +481,16 @@ body::before {
   background: rgba(0, 0, 0, 0.25);
   border-bottom-left-radius: 14px;
   border-bottom-right-radius: 14px;
+  border: none;
+  resize: none;
+  outline: none;
+  caret-color: var(--accent);
+}
+.inspector__json:focus {
+  background: rgba(0, 0, 0, 0.35);
+}
+.inspector__json.is-invalid {
+  background: rgba(70, 12, 18, 0.35);
 }
 
 .hints {

@@ -83,11 +83,21 @@
             <header class="inspector__header">
               <span class="inspector__title">ActionPlan</span>
               <span class="inspector__source" id="inspectorSource">preset</span>
+              <button id="inspectorApply" class="inspector__copy" type="button" aria-label="Apply edited plan" title="Apply edit (⌘/Ctrl+Enter)">apply</button>
               <button id="inspectorCopy" class="inspector__copy" type="button" aria-label="Copy plan JSON" title="Copy JSON">copy</button>
               <button id="inspectorClose" class="inspector__close" type="button" aria-label="Close inspector">×</button>
             </header>
             <div class="inspector__meta" id="inspectorMeta">—</div>
-            <pre class="inspector__json" id="inspectorJson">{}</pre>
+            <textarea
+              class="inspector__json"
+              id="inspectorJson"
+              spellcheck="false"
+              autocomplete="off"
+              autocorrect="off"
+              autocapitalize="off"
+              wrap="off"
+              aria-label="Editable plan JSON"
+            >{}</textarea>
           </aside>
 
           <div id="hints" class="hints" aria-label="Keyboard shortcuts">
