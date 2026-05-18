@@ -48,6 +48,46 @@ Optional env vars:
 - `PORT` — listen port, default `8000`.
 - `LATENT_CANVAS_MODEL` — Anthropic model id, default `claude-sonnet-4-6`.
 
+### Share it with ngrok
+
+Use ngrok when someone needs to open the local demo from another device or record it from a public HTTPS URL. The local server and the ngrok tunnel both need to stay running.
+
+One-time setup:
+
+```bash
+brew install ngrok/ngrok/ngrok
+ngrok config add-authtoken YOUR_NGROK_TOKEN
+```
+
+Open the connection:
+
+```bash
+cd path/to/vision_demo
+npm start
+```
+
+In a second terminal:
+
+```bash
+ngrok http 8000
+```
+
+Copy the `https://...ngrok-free.dev` forwarding URL from the ngrok output. The tunnel status page is available at <http://127.0.0.1:4040> while ngrok is running.
+
+Close the connection:
+
+- Press `Ctrl+C` in the ngrok terminal to stop the public URL.
+- Press `Ctrl+C` in the `npm start` terminal to stop the local server.
+
+If a process is still holding the port, find and stop it:
+
+```bash
+lsof -nP -iTCP:8000 -sTCP:LISTEN
+kill PID_FROM_LSOF
+```
+
+Free ngrok URLs usually change each time the tunnel is reopened unless the account has a reserved/static domain.
+
 ### First-load notes
 
 - The browser fetches OpenCV.js (~5 MB) and the COCO-SSD weights (~9 MB) from CDNs. After that they're cached.
