@@ -1,8 +1,8 @@
 # Latent Canvas
 
-A live, object-aware creative-vision instrument that runs entirely in the browser. Your webcam feeds an object detector (COCO-SSD), each detected object becomes its own small canvas for object-local computer vision (OpenCV.js — Canny edges, Hough lines), and a deterministic action renderer composites styled effects (aura, spotlight, glitch, trails, edges, lines, foreground/background masks) per object based on an `ActionPlan` — either a hardcoded preset or one generated from a natural-language prompt by an LLM.
+A live, object-aware creative-vision instrument that runs entirely in the browser. Your webcam feeds an object detector (COCO-SSD) and OpenCV.js extracts a foreground/background mask (MOG2) and a scene-level Canny edge mask. Those mask canvases plus the raw camera frame are bound as textures to an **AI-authored GLSL fragment shader** that paints the scene. The user can prompt the model for a new shader, edit the resulting GLSL directly, and recompile in place.
 
-Phase 1–4A plus the Phase 4B `foregroundBackground` action are implemented. The remaining Phase 4B actions and Phases 4C–6 are roadmap.
+Phase 5 replaces the earlier `ActionPlan` system: the AI no longer picks from a fixed vocabulary of effects — it writes the shader code that decides how scene structure becomes the final image.
 
 ---
 
@@ -10,29 +10,29 @@ Phase 1–4A plus the Phase 4B `foregroundBackground` action are implemented. Th
 
 You have two modes:
 
-| Mode | Camera + detection | Presets | Prompt → plan |
-| --- | --- | --- | --- |
-| **Static-only** | Yes | Yes | Local mock planner (keyword-based fallback) |
-| **Full LLM** | Yes | Yes | Real Anthropic-backed planner |
+| Mode | Camera + OpenCV masks + default shader | Prompt → AI-authored shader |
+| --- | --- | --- |
+| **Static-only** | Yes | No (the prompt requires the Node server) |
+| **Full LLM** | Yes | Yes — Anthropic-backed `/api/shader` |
 
-Pick the one you need. The frontend is identical — only the server differs.
+The frontend is identical — only the server differs.
 
 ### Static-only (no install)
 
-Serves the files; the prompt UI falls back to the local mock planner.
+Serves the files; the default OpenCV-aware shader runs, the editor and debug views work, but the prompt has nowhere to call.
 
 ```bash
 cd path/to/vision_demo
 python3 -m http.server 8000
 ```
 
-Open <http://localhost:8000> and grant camera access. Type prompts like "make the person sacred" or "cold and glitchy" — the mock planner recognizes a small mood vocabulary and produces a valid plan.
+Open <http://localhost:8000> and grant camera access. Open the editor (`e`) to inspect or modify the default shader and recompile (Cmd/Ctrl+Enter).
 
 `npx serve .` works identically.
 
 ### Full LLM (Node reference server)
 
-Runs the same frontend AND a `/api/plan` endpoint that calls Anthropic.
+Runs the same frontend AND a `/api/shader` endpoint that calls Anthropic.
 
 ```bash
 cd path/to/vision_demo
@@ -41,7 +41,7 @@ export ANTHROPIC_API_KEY=sk-ant-...
 npm start
 ```
 
-Open <http://localhost:8000>. The prompt status pill shows `applied` when the LLM-generated plan lands; if the API key is missing or the call fails, the frontend silently falls back to the mock planner and shows `mock`.
+Open <http://localhost:8000>. Type a prompt like "turn the moving foreground into a thermal ghost and make object edges glow green" and click **Generate**. The model returns a complete GLSL fragment shader; the browser validates it, compiles it, and starts rendering. If compilation fails, the last working shader keeps running and the editor shows the GLSL compiler log inline.
 
 Optional env vars:
 
@@ -51,43 +51,40 @@ Optional env vars:
 ### First-load notes
 
 - The browser fetches OpenCV.js (~5 MB) and the COCO-SSD weights (~9 MB) from CDNs. After that they're cached.
-- The boot overlay tells you what's loading. The status pill in the title bar turns green once the detector is ready.
-- The camera prompt is browser-driven. If you accidentally deny it, re-enable in site settings.
+- The boot overlay tells you what's loading. The status pill in the title bar turns green once the detector is ready and the default shader has compiled.
 
 ---
 
 ## Controls
 
 - **Prompt** (bottom bar): natural-language direction, e.g.
-  - `make the person sacred and the laptop poisonous`
-  - `cold mirror with glitching screens`
-  - `everything radioactive`
-- **Preset chips**: `Neutral`, `Sacred Contamination`, `Cold Mirror`, `Glitch Storm`. Click any to override the LLM plan with a hardcoded one.
-- **Intensity slider**: master scalar (0–100%) on every styled action's opacity and global-style strength.
-- **Keyboard**: `/` focuses the prompt, `Enter` submits it, `Escape` blurs it. `1–4` selects a preset by index (ignored while the prompt is focused). `i` toggles the **plan inspector** (also: `JSON` button in the title bar) — a slide-out panel showing the active `ActionPlan` JSON, its source (`preset` / `llm` / `mock`), and any validator warnings or errors.
-- **Top-left badge**: live object count. **Top-right badge**: active plan title. **Title bar**: FPS + status. **Prompt status pill**: `planning…` → `applied` (LLM) or `mock` (fallback) or `invalid` (rejected plan).
+  - `thermal ghost foreground with electric green edges`
+  - `infrared body with scanline overlay`
+  - `dim everything except the moving silhouette and trace its outline`
+- **Intensity slider**: a scalar uniform (`u_intensity`) the shader is encouraged to honor.
+- **GLSL editor** (`e`): a slide-out panel with the active fragment shader source. Edit and press **Render** (or Cmd/Ctrl+Enter) to recompile. Compile errors render inline; the last working shader stays active.
+- **Debug view** (`d`): cycle through SHADER → VIDEO → FG MASK → EDGE MASK to see exactly what OpenCV is feeding the shader.
+- **Keyboard**: `/` focuses the prompt, `Enter` submits, `Escape` blurs. `e` toggles the editor, `d` cycles debug views, `c` toggles the camera feed, `v` swaps source between camera and a video file.
 
 ---
 
 ## Architecture
 
 ```
-captureCanvas → COCO-SSD → tracker → DetectedObject[]
-                                    ↘
-                                     object-local CV → ObjectGeometry[]
-                                    ↘
-                                     scene signals → planner payload
-                                                          ↓
-prompt input ─────────────────────────────────────→ /api/plan (Anthropic)
-                                                          ↓
-                                                  validateActionPlan
-                                                          ↓
-                                                   ActionPlan
-                                                          ↓
-                                                  drawStyledPlan
+captureCanvas → COCO-SSD → tracker → DetectedObject[]   (scene signals)
+              → MOG2 foreground mask canvas              (u_fgMask)
+              → scene-level Canny edge mask canvas       (u_edgeMask)
+              ↓
+prompt input ──→ /api/shader (Anthropic) ──→ validateShaderPlan
+                                                  ↓
+                                            { fragmentShader }
+                                                  ↓
+                                        WebGL compile + draw
+                                                  ↓
+                                            output canvas
 ```
 
-Key contract: the LLM gets **expressive control, not execution control**. It chooses from a constrained `CreativeAction` vocabulary; every numeric is clamped to [0,1]; unknown action types / blend modes / label modes are dropped; selector classes are filtered against COCO + currently-detected. The renderer never sees an un-sanitized plan.
+Key contract: the LLM gets **shader-level expressive control, not arbitrary execution**. It writes only GLSL ES 1.00 fragment shader source against a fixed uniform header (`u_video`, `u_fgMask`, `u_edgeMask`, `u_resolution`, `u_time`, `u_intensity`, `u_hasFgMask`, `u_hasEdgeMask`). The validator strips markdown fences, rejects JavaScript-shaped strings, requires `precision mediump float`, `void main`, and `u_video`, and caps total size. The browser's GLSL compiler is the only thing that ever executes the generated text.
 
 ---
 
@@ -95,32 +92,40 @@ Key contract: the LLM gets **expressive control, not execution control**. It cho
 
 ```
 vision_demo/
-  index.html              # window shell, control bar, CDN script tags
-  styles.css              # dark immersive UI
-  app.js                  # capture loop, prompt flow, intensity smoothing, render dispatch
-  package.json            # server deps + npm start
+  index.html               # window shell, control bar, shader editor, CDN script tags
+  styles.css               # dark immersive UI
+  app.js                   # capture loop, prompt flow, intensity smoothing, shader render dispatch
+  package.json             # server deps + npm start
   analysis/
-    objectDetector.js     # COCO-SSD wrapper
-    objectTracker.js      # per-class IoU tracking + EMA bbox smoothing
-    objectLocalCv.js      # per-bbox Canny + Hough Lines (OpenCV.js)
-    foregroundBackground.js # full-frame MOG2 foreground mask (OpenCV.js)
-    sceneSignals.js       # summary stats sent to the planner
+    objectDetector.js      # COCO-SSD wrapper
+    objectTracker.js       # per-class IoU tracking + EMA bbox smoothing
+    foregroundBackground.js  # full-frame MOG2 foreground mask canvas (u_fgMask)
+    sceneEdgeMask.js       # full-frame Canny edge mask canvas (u_edgeMask)
+    objectLocalCv.js       # per-bbox Canny + Hough Lines (legacy, currently unused at render time)
+    sceneSignals.js        # summary stats sent to the shader prompt
   render/
-    neutralPreview.js     # inspection layer (boxes, labels, faint geometry)
-    actionRenderer.js     # orchestrator (design's render order)
-    actions/              # aura, localEdges, localLines, foregroundBackground, spotlight, trail, glitch
+    shader/
+      shaderRenderer.js    # WebGL context + program lifecycle + frame draw
+      shaderTextures.js    # canvas → WebGL texture upload
+      defaultShaders.js    # OpenCV-aware default + debug shaders
+    actionRenderer.js      # legacy Phase 4 renderer (no longer in the render path)
+    neutralPreview.js      # legacy inspection layer
+    actions/               # legacy per-effect renderers (kept as reference)
   llm/
-    actionPlanSchema.js   # action/blend whitelist + clamp helpers
-    validateActionPlan.js # parses + sanitizes any plan before rendering
-    plannerPrompt.js      # system + user prompt template (server-side)
-    planClient.js         # frontend client (real fetch + mock fallback)
-    mockPlanner.js        # keyword fallback for static-only dev
-    defaultPlans.js       # hardcoded ActionPlan presets
+    shaderPrompt.js        # shader system + user prompt template (server-side)
+    validateShaderPlan.js  # parses + sanitizes any shader plan before compilation
+    shaderClient.js        # frontend client for /api/shader
+    actionPlanSchema.js    # legacy Phase 4 schema
+    validateActionPlan.js  # legacy Phase 4 validator
+    plannerPrompt.js       # legacy Phase 4 prompt
+    planClient.js          # legacy Phase 4 client
+    mockPlanner.js         # legacy Phase 4 mock
+    defaultPlans.js        # legacy Phase 4 presets
   server/
-    planRoute.js          # Node reference server (static + /api/plan)
-  design.md
-  object-local-cv-design.md
+    planRoute.js           # Node reference server entry (static + /api/shader)
+    shaderRoute.js         # /api/shader handler (Anthropic call + validation)
   phase_4_implementation.md
+  phase_5_shader_implementation.md
 ```
 
 ---
@@ -128,10 +133,10 @@ vision_demo/
 ## Troubleshooting
 
 - **Black canvas, no camera**: open the browser console. A permission denial or non-secure-origin issue will be the first thing reported. URLs must start with `http://localhost` or `https://`.
-- **Prompt says `mock`**: the backend isn't reachable. Either you're on the static-only server (expected), or `ANTHROPIC_API_KEY` isn't set, or the API call failed. Check the server logs.
-- **Prompt says `invalid`**: the LLM returned something the validator couldn't repair into a plan with at least one rule. The previous plan is kept. Check the server logs for the raw response.
-- **FPS drops on `Glitch Storm` or heavy prompts**: drop the intensity slider, or remove the trail action from the prompt.
-- **Mirror feels wrong**: the canvas is intentionally mirrored at capture so it reads like a selfie cam. Detection, CV, and overlays all live in display space.
+- **Compile error in editor**: the shader violated the GLSL contract (missing `void main`, missing `precision`, missing `u_video`, etc.) or hit a WebGL compiler error. The last working shader keeps running; fix the code and press **Render**.
+- **Prompt fails with `invalid`**: the LLM returned something the validator rejected (no `fragmentShader`, forbidden JS-shaped content, oversized output). The previous shader is kept. Check the server logs for the raw response.
+- **Foreground mask looks empty for a few seconds**: MOG2 needs a few frames to learn the static background before silhouettes appear. Move briefly so it can separate you from the room.
+- **Mirror feels wrong**: the camera capture is intentionally mirrored so it reads like a selfie cam. Detection and shader sampling all live in this display space.
 
 ---
 
@@ -140,12 +145,10 @@ vision_demo/
 | Phase | Status | Summary |
 | --- | --- | --- |
 | 1 | ✅ | Object-first refactor: detection is the only analysis root, tracker IDs + smoothed bboxes. |
-| 2 | ✅ | Object-local CV: Canny + Hough run on each tracked bbox crop only — background never analyzed. |
-| 3 | ✅ | Deterministic action vocabulary, hardcoded presets, intensity slider, smooth transitions. |
-| 4A | ✅ | Prompt → validated ActionPlan loop with mock + Anthropic backends. |
-| 4B | ⏳ | `foregroundBackground` implemented; `localDepth` + `freezeBox` remaining. |
-| 4C | ⏳ | Richer scene signals in the planner payload. |
-| 5 | ⏳ | Click-to-select object, capped detector FPS, conditional CV. |
-| 6 | ⏳ | Scene relationships: distance, proximity, tension lines, `nearClass`. |
+| 2 | ✅ | Object-local CV: Canny + Hough run on each tracked bbox crop only. |
+| 3 | ✅ | Deterministic action vocabulary, hardcoded presets, intensity slider. |
+| 4 | ✅ | Prompt → validated ActionPlan loop with mock + Anthropic backends. |
+| 5 | ✅ | AI-authored GLSL: shader is the renderer; OpenCV masks feed the shader; prompt → fragment shader → live compile. |
+| 6 | ⏳ | Object box / depth uniforms; richer per-object shader effects. |
 
-See `object-local-cv-design.md` and `phase_4_implementation.md` for the full design.
+See `phase_5_shader_implementation.md` for the full Phase 5 design.

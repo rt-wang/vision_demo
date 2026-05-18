@@ -1,26 +1,27 @@
 /*
- * Latent Canvas reference server.
+ * Latent Canvas reference server (Phase 5).
  *
- * Serves the static frontend AND a POST /api/plan endpoint that:
- *   - takes { userPrompt, detectedClasses, signals, currentPlan, ... }
- *   - calls Anthropic with the planner system + user prompt
- *   - parses + validates the model's JSON output with validateActionPlan
- *   - returns { ok, plan, errors }
+ * Serves the static frontend AND a POST /api/shader endpoint that:
+ *   - takes { userPrompt, detectedClasses, signals, currentShader, masksAvailable }
+ *   - calls Anthropic with the shader system + user prompt
+ *   - parses + validates the model's JSON output with validateShaderPlan
+ *   - returns { ok, shaderPlan, errors }
  *
- * Single port so the frontend can hit /api/plan without CORS gymnastics.
+ * Single port so the frontend can hit /api/shader without CORS gymnastics.
  *
  * Requires: ANTHROPIC_API_KEY in the environment, and `npm install` at the
  * project root (depends on @anthropic-ai/sdk).
+ *
+ * Note: this file is named planRoute.js for legacy reasons (Phase 4 used
+ * /api/plan). Phase 5 retired that endpoint in favor of /api/shader.
  */
 
 import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
-import Anthropic from "@anthropic-ai/sdk";
 
-import { validateActionPlan } from "../llm/validateActionPlan.js";
-import { SYSTEM_PROMPT, buildUserMessage } from "../llm/plannerPrompt.js";
+import { handleShader, isShaderRouteReady } from "./shaderRoute.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -28,12 +29,10 @@ const ROOT = path.resolve(__dirname, "..");
 const PORT = Number(process.env.PORT) || 8000;
 const MODEL = process.env.LATENT_CANVAS_MODEL || "claude-sonnet-4-6";
 
-const apiKey = process.env.ANTHROPIC_API_KEY;
-const client = apiKey ? new Anthropic({ apiKey }) : null;
-if (!client) {
+if (!isShaderRouteReady()) {
   console.warn(
-    "[server] ANTHROPIC_API_KEY not set — /api/plan will return 503. " +
-      "The frontend will fall back to its local mock planner.",
+    "[server] ANTHROPIC_API_KEY not set — /api/shader will return 503. " +
+      "The frontend default shader still renders OpenCV masks without the LLM.",
   );
 }
 
@@ -50,76 +49,6 @@ const MIME = {
   ".ico": "image/x-icon",
   ".wasm": "application/wasm",
 };
-
-function readBody(req) {
-  return new Promise((resolve, reject) => {
-    const chunks = [];
-    let bytes = 0;
-    req.on("data", (c) => {
-      bytes += c.length;
-      if (bytes > 64 * 1024) {
-        req.destroy();
-        reject(new Error("body_too_large"));
-        return;
-      }
-      chunks.push(c);
-    });
-    req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
-    req.on("error", reject);
-  });
-}
-
-function sendJson(res, status, body) {
-  res.writeHead(status, { "Content-Type": "application/json; charset=utf-8" });
-  res.end(JSON.stringify(body));
-}
-
-async function handlePlan(req, res) {
-  if (!client) {
-    sendJson(res, 503, {
-      ok: false,
-      plan: null,
-      errors: ["anthropic_api_key_not_configured"],
-    });
-    return;
-  }
-
-  let payload;
-  try {
-    const raw = await readBody(req);
-    payload = JSON.parse(raw);
-  } catch (e) {
-    sendJson(res, 400, { ok: false, plan: null, errors: ["invalid_request_body"] });
-    return;
-  }
-
-  const detectedClasses = Array.isArray(payload?.detectedClasses)
-    ? payload.detectedClasses
-    : [];
-
-  try {
-    const response = await client.messages.create({
-      model: MODEL,
-      max_tokens: 2000,
-      system: SYSTEM_PROMPT,
-      messages: [{ role: "user", content: buildUserMessage(payload) }],
-    });
-    const text = response.content
-      .filter((b) => b.type === "text")
-      .map((b) => b.text)
-      .join("\n")
-      .trim();
-    const v = validateActionPlan(text, { detectedClasses });
-    sendJson(res, 200, { ok: v.ok, plan: v.plan, errors: v.errors });
-  } catch (err) {
-    console.error("[plan] anthropic error:", err);
-    sendJson(res, 500, {
-      ok: false,
-      plan: null,
-      errors: [String(err.message || err)],
-    });
-  }
-}
 
 function serveStatic(req, res) {
   let urlPath;
@@ -150,8 +79,8 @@ function serveStatic(req, res) {
 }
 
 const server = http.createServer((req, res) => {
-  if (req.method === "POST" && req.url === "/api/plan") {
-    handlePlan(req, res);
+  if (req.method === "POST" && req.url === "/api/shader") {
+    handleShader(req, res);
     return;
   }
   if (req.method !== "GET" && req.method !== "HEAD") {
@@ -162,8 +91,8 @@ const server = http.createServer((req, res) => {
   serveStatic(req, res);
 });
 
-server.listen(PORT, () => {
-  console.log(`Latent Canvas: http://localhost:${PORT}`);
+server.listen(PORT, "0.0.0.0", () => {
+  console.log(`Latent Canvas: http://localhost:${PORT} (bound to 0.0.0.0)`);
   console.log(`Model: ${MODEL}`);
-  console.log(client ? "Planner: live" : "Planner: disabled (no API key)");
+  console.log(isShaderRouteReady() ? "Shader route: live" : "Shader route: disabled (no API key)");
 });

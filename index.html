@@ -27,13 +27,32 @@
               title="Toggle camera feed (c)"
             >CAM</button>
             <button
-              id="inspectorToggle"
+              id="sourceToggle"
+              class="meta__btn"
+              type="button"
+              aria-pressed="false"
+              title="Use a video file as the source"
+            >VIDEO</button>
+            <input
+              id="sourceFile"
+              type="file"
+              accept="video/*"
+              hidden
+            />
+            <button
+              id="viewToggle"
+              class="meta__btn"
+              type="button"
+              title="Cycle debug view (d)"
+            >SHADER</button>
+            <button
+              id="editorToggle"
               class="meta__btn"
               type="button"
               aria-expanded="false"
-              aria-controls="inspector"
-              title="Toggle plan inspector (i)"
-            >JSON</button>
+              aria-controls="editor"
+              title="Toggle shader editor (e)"
+            >GLSL</button>
           </div>
         </header>
 
@@ -43,7 +62,7 @@
 
           <div class="overlay overlay--top">
             <span class="badge" id="countBadge">0 objects</span>
-            <span class="badge badge--title" id="planTitle">Neutral</span>
+            <span class="badge badge--title" id="shaderTitle">OpenCV Default</span>
           </div>
 
           <div class="overlay overlay--bottom">
@@ -53,15 +72,14 @@
                   type="text"
                   id="promptInput"
                   class="prompt__input"
-                  placeholder="direct the scene — e.g. make the person sacred and the laptop poisonous"
+                  placeholder="describe the shader — e.g. thermal ghost foreground with electric green edges"
                   maxlength="500"
                   spellcheck="false"
-                  aria-label="Scene prompt"
+                  aria-label="Shader prompt"
                 />
-                <button type="submit" class="prompt__submit" id="promptSubmit">Apply</button>
+                <button type="submit" class="prompt__submit" id="promptSubmit">Generate</button>
                 <span class="prompt__status" id="promptStatus" role="status" aria-live="polite"></span>
               </form>
-              <div class="presets" role="tablist" aria-label="Action plan presets" id="presetRow"></div>
               <label class="intensity">
                 <span class="intensity__label">Intensity</span>
                 <input
@@ -79,32 +97,37 @@
             </div>
           </div>
 
-          <aside id="inspector" class="inspector" aria-hidden="true" aria-label="Plan inspector">
-            <header class="inspector__header">
-              <span class="inspector__title">ActionPlan</span>
-              <span class="inspector__source" id="inspectorSource">preset</span>
-              <button id="inspectorApply" class="inspector__copy" type="button" aria-label="Apply edited plan" title="Apply edit (⌘/Ctrl+Enter)">apply</button>
-              <button id="inspectorCopy" class="inspector__copy" type="button" aria-label="Copy plan JSON" title="Copy JSON">copy</button>
-              <button id="inspectorClose" class="inspector__close" type="button" aria-label="Close inspector">×</button>
+          <aside id="editor" class="editor" aria-hidden="true" aria-label="Shader editor">
+            <header class="editor__header">
+              <span class="editor__title">FRAGMENT SHADER</span>
+              <span class="editor__source" id="editorSource">default</span>
+              <button id="editorRender" class="editor__btn editor__btn--accent" type="button" title="Compile + render (⌘/Ctrl+Enter)">Render</button>
+              <button id="editorReset" class="editor__btn" type="button" title="Reset to default shader">reset</button>
+              <button id="editorCopy" class="editor__btn" type="button" title="Copy shader source">copy</button>
+              <button id="editorClose" class="editor__close" type="button" aria-label="Close editor">×</button>
             </header>
-            <div class="inspector__meta" id="inspectorMeta">—</div>
+            <div class="editor__meta" id="editorMeta">—</div>
+            <div class="editor__status" id="editorStatus" aria-live="polite">idle</div>
             <textarea
-              class="inspector__json"
-              id="inspectorJson"
+              class="editor__code"
+              id="editorCode"
               spellcheck="false"
               autocomplete="off"
               autocorrect="off"
               autocapitalize="off"
               wrap="off"
-              aria-label="Editable plan JSON"
-            >{}</textarea>
+              aria-label="Editable fragment shader source"
+            ></textarea>
+            <pre class="editor__error" id="editorError" aria-live="polite"></pre>
           </aside>
 
           <div id="hints" class="hints" aria-label="Keyboard shortcuts">
             <div class="hints__row"><kbd>/</kbd><span>focus prompt</span></div>
-            <div class="hints__row"><kbd>1–N</kbd><span>select preset</span></div>
-            <div class="hints__row"><kbd>i</kbd><span>inspector</span></div>
+            <div class="hints__row"><kbd>e</kbd><span>shader editor</span></div>
+            <div class="hints__row"><kbd>d</kbd><span>debug view</span></div>
             <div class="hints__row"><kbd>c</kbd><span>toggle camera</span></div>
+            <div class="hints__row"><kbd>v</kbd><span>video file source</span></div>
+            <div class="hints__row"><kbd>⌘/Ctrl+↵</kbd><span>compile shader</span></div>
             <div class="hints__row"><kbd>Esc</kbd><span>dismiss</span></div>
           </div>
 
@@ -122,7 +145,7 @@
     <!-- TensorFlow.js + COCO-SSD (object detection) -->
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.20.0/dist/tf.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3/dist/coco-ssd.min.js"></script>
-    <!-- OpenCV.js (object-local CV + foreground/background subtraction) -->
+    <!-- OpenCV.js (foreground/background subtraction + scene-level edge mask) -->
     <script async src="https://docs.opencv.org/4.x/opencv.js" onload="window.__cvReady=true"></script>
 
     <script type="module" src="./app.js"></script>

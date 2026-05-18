@@ -15,6 +15,12 @@ let _width = 0;
 let _height = 0;
 let _warnedUnavailable = false;
 
+// Persistent canvas that mirrors the latest cleaned mask. WebGL textures bind
+// to this each frame (Phase 5 shader path) so we don't churn a new canvas per
+// upload.
+let _maskCanvas = null;
+let _maskCtx = null;
+
 function disposeMat(m) {
   if (m && !m.isDeleted?.()) {
     try { m.delete(); } catch (_) { /* ignore */ }
@@ -40,6 +46,12 @@ export function disposeForegroundBackgroundMats() {
   disposeSubtractor();
   _width = 0;
   _height = 0;
+  _maskCanvas = null;
+  _maskCtx = null;
+}
+
+export function getForegroundMaskCanvas() {
+  return _maskCanvas;
 }
 
 export function isReady() {
@@ -52,6 +64,8 @@ function ensureState(cv, width, height) {
     disposeMat(_fgmask); _fgmask = null;
     disposeMat(_clean); _clean = null;
     disposeSubtractor();
+    _maskCanvas = null;
+    _maskCtx = null;
     _width = width;
     _height = height;
   }
@@ -64,9 +78,19 @@ function ensureState(cv, width, height) {
   if (!_subtractor) {
     _subtractor = new cv.BackgroundSubtractorMOG2(500, 16, false);
   }
+  if (!_maskCanvas) {
+    _maskCanvas = document.createElement("canvas");
+    _maskCanvas.width = width;
+    _maskCanvas.height = height;
+    _maskCtx = _maskCanvas.getContext("2d");
+  }
 }
 
 function maskMatToImageData(mat) {
+  // Encode the mask value in RGB with alpha=255 so canvas→WebGL upload
+  // doesn't mangle the value through premultiplication. Phase 5 shaders read
+  // the mask via .r (matching the Phase 5 contract docs); debug overlays that
+  // drawImage() this canvas get a readable grayscale silhouette.
   const w = mat.cols;
   const h = mat.rows;
   const src = mat.data;
@@ -74,10 +98,10 @@ function maskMatToImageData(mat) {
   for (let i = 0; i < w * h; i++) {
     const v = src[i];
     const o = i * 4;
-    out[o] = 255;
-    out[o + 1] = 255;
-    out[o + 2] = 255;
-    out[o + 3] = v;
+    out[o] = v;
+    out[o + 1] = v;
+    out[o + 2] = v;
+    out[o + 3] = 255;
   }
   return new ImageData(out, w, h);
 }
@@ -115,7 +139,13 @@ export function computeForegroundBackground(captureCanvas, options = {}) {
   cv.morphologyEx(_fgmask, _clean, cv.MORPH_OPEN, _kernel);
   cv.morphologyEx(_clean, _clean, cv.MORPH_CLOSE, _kernel);
 
+  const imageData = maskMatToImageData(_clean);
+  if (_maskCtx) {
+    _maskCtx.putImageData(imageData, 0, 0);
+  }
+
   return {
-    foregroundMask: maskMatToImageData(_clean),
+    foregroundMask: imageData,
+    foregroundMaskCanvas: _maskCanvas,
   };
 }
