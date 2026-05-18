@@ -86,6 +86,21 @@ lsof -nP -iTCP:8000 -sTCP:LISTEN
 kill PID_FROM_LSOF
 ```
 
+If ngrok says the endpoint is already online:
+
+```text
+ERR_NGROK_334
+```
+
+An existing ngrok process is still running for that URL. Press `Ctrl+C` in the terminal where `ngrok http 8000` is running, or find the ngrok web UI process and stop it:
+
+```bash
+lsof -nP -iTCP:4040 -sTCP:LISTEN
+kill PID_FROM_LSOF
+```
+
+Then run `ngrok http 8000` again.
+
 Free ngrok URLs usually change each time the tunnel is reopened unless the account has a reserved/static domain.
 
 ### First-load notes
