@@ -70,11 +70,16 @@ const ui = {
   editorMeta: document.getElementById("editorMeta"),
   editorStatus: document.getElementById("editorStatus"),
   editorCode: document.getElementById("editorCode"),
+  editorGutter: document.getElementById("editorGutter"),
+  editorBody: document.querySelector(".editor__body"),
   editorError: document.getElementById("editorError"),
   feedToggle: document.getElementById("feedToggle"),
   sourceToggle: document.getElementById("sourceToggle"),
   sourceFile: document.getElementById("sourceFile"),
   viewToggle: document.getElementById("viewToggle"),
+  immersiveToggle: document.getElementById("immersiveToggle"),
+  immersiveExit: document.getElementById("immersiveExit"),
+  window: document.getElementById("window"),
 };
 
 // Debug view cycles through: shader output, video only, fg mask canvas, edge mask canvas.
@@ -105,6 +110,7 @@ const state = {
   lastShaderWarnings: [],
   editorOpen: false,
   hideFeed: false,
+  immersive: false,
   view: "shader",
 
   // Video source. "camera" uses getUserMedia (mirrored); "file" loops a user-
@@ -125,6 +131,8 @@ const INTENSITY_SMOOTHING = 0.12;
 const SHADER_DUCK_MS = 220;
 
 const shaderRenderer = createShaderRenderer({ width: 1280, height: 720 });
+let shaderEditor = null;
+let editorGutterLineCount = 0;
 
 function setStatus(text, ready = false) {
   ui.status.textContent = text;
@@ -342,12 +350,117 @@ function refreshEditorStatus() {
     ui.editorStatus.textContent = "idle";
   }
   ui.editorError.textContent = state.shader.compileError || "";
-  ui.editorCode.classList.toggle("is-invalid", state.shader.compileStatus === "error");
+  if (ui.editorBody) {
+    ui.editorBody.classList.toggle("is-invalid", state.shader.compileStatus === "error");
+  }
 }
 
 function refreshEditorCode() {
-  if (document.activeElement !== ui.editorCode) {
-    ui.editorCode.value = state.shader.fragmentShader || "";
+  if (!isEditorFocused()) {
+    setEditorValue(state.shader.fragmentShader || "");
+  }
+  updateEditorGutter();
+  syncEditorScroll();
+}
+
+function isEditorFocused() {
+  return shaderEditor ? shaderEditor.hasFocus() : document.activeElement === ui.editorCode;
+}
+
+function blurEditor() {
+  if (shaderEditor) {
+    shaderEditor.getInputField().blur();
+  } else {
+    ui.editorCode.blur();
+  }
+}
+
+function getEditorValue() {
+  return shaderEditor ? shaderEditor.getValue() : ui.editorCode.value || "";
+}
+
+function setEditorValue(value) {
+  const next = value || "";
+  if (shaderEditor) {
+    if (shaderEditor.getValue() !== next) {
+      const scroll = shaderEditor.getScrollInfo();
+      shaderEditor.setValue(next);
+      shaderEditor.scrollTo(scroll.left, scroll.top);
+      shaderEditor.save();
+    }
+    return;
+  }
+  ui.editorCode.value = next;
+}
+
+function initCodeEditor() {
+  if (shaderEditor || !window.CodeMirror) return;
+
+  const glslMode = window.CodeMirror.mimeModes &&
+    window.CodeMirror.mimeModes["x-shader/x-fragment"]
+    ? "x-shader/x-fragment"
+    : "text/x-csrc";
+
+  shaderEditor = window.CodeMirror.fromTextArea(ui.editorCode, {
+    mode: glslMode,
+    theme: "latent",
+    lineNumbers: true,
+    lineWrapping: false,
+    matchBrackets: true,
+    indentUnit: 2,
+    tabSize: 2,
+    indentWithTabs: false,
+    smartIndent: true,
+    extraKeys: {
+      "Cmd-Enter": () => applyEditorEdit(),
+      "Ctrl-Enter": () => applyEditorEdit(),
+      Tab(cm) {
+        if (cm.somethingSelected()) {
+          cm.indentSelection("add");
+        } else {
+          cm.replaceSelection("  ", "end", "+input");
+        }
+      },
+      "Shift-Tab": (cm) => cm.indentSelection("subtract"),
+    },
+  });
+  if (ui.editorBody) ui.editorBody.classList.add("is-codemirror");
+  shaderEditor.on("change", () => {
+    if (ui.editorBody) ui.editorBody.classList.remove("is-invalid");
+    shaderEditor.save();
+  });
+  shaderEditor.on("focus", () => {
+    if (ui.editorBody) ui.editorBody.classList.add("is-focus");
+  });
+  shaderEditor.on("blur", () => {
+    if (ui.editorBody) ui.editorBody.classList.remove("is-focus");
+  });
+}
+
+function updateEditorGutter() {
+  if (shaderEditor) return;
+  const text = ui.editorCode.value || "";
+  if (ui.editorGutter) {
+    let lineCount = 1;
+    for (let i = 0; i < text.length; i++) {
+      if (text.charCodeAt(i) === 10) lineCount += 1;
+    }
+    if (lineCount === editorGutterLineCount) return;
+    editorGutterLineCount = lineCount;
+    let nums = "";
+    for (let i = 1; i <= lineCount; i++) {
+      nums += i + "\n";
+    }
+    ui.editorGutter.textContent = nums;
+  }
+}
+
+// Keep the gutter visually scrolled with the textarea.
+function syncEditorScroll() {
+  if (shaderEditor) return;
+  const y = ui.editorCode.scrollTop;
+  if (ui.editorGutter) {
+    ui.editorGutter.style.transform = `translateY(${-y}px)`;
   }
 }
 
@@ -392,12 +505,14 @@ function applyShaderPlan(plan, source, warnings) {
 function applyDefaultShader() {
   const ok = applyShaderPlan(DEFAULT_SHADER_PLAN, "default", []);
   if (ok) {
-    ui.editorCode.value = DEFAULT_SHADER;
+    setEditorValue(DEFAULT_SHADER);
+    updateEditorGutter();
+    syncEditorScroll();
   }
 }
 
 async function copyEditorCode() {
-  const text = ui.editorCode.value || "";
+  const text = getEditorValue();
   let copied = false;
   try {
     if (navigator.clipboard && window.isSecureContext) {
@@ -427,7 +542,7 @@ async function copyEditorCode() {
 }
 
 function applyEditorEdit() {
-  const text = ui.editorCode.value || "";
+  const text = getEditorValue();
   const v = validateShaderPlan({
     title: state.shader.title,
     description: state.shader.description,
@@ -461,13 +576,26 @@ function setEditorOpen(open) {
   ui.editor.setAttribute("aria-hidden", open ? "false" : "true");
   ui.editorToggle.classList.toggle("is-active", open);
   ui.editorToggle.setAttribute("aria-expanded", open ? "true" : "false");
-  if (open) refreshEditor();
+  if (open) {
+    refreshEditor();
+    if (shaderEditor) {
+      requestAnimationFrame(() => shaderEditor.refresh());
+    }
+  }
 }
 
 function setHideFeed(hide) {
   state.hideFeed = hide;
   ui.feedToggle.classList.toggle("is-active", hide);
   ui.feedToggle.setAttribute("aria-pressed", hide ? "true" : "false");
+}
+
+function setImmersive(on) {
+  state.immersive = on;
+  ui.window.classList.toggle("is-immersive", on);
+  ui.immersiveToggle.classList.toggle("is-active", on);
+  ui.immersiveToggle.setAttribute("aria-pressed", on ? "true" : "false");
+  if (on && state.editorOpen) setEditorOpen(false);
 }
 
 function setView(view) {
@@ -528,6 +656,7 @@ async function submitPrompt() {
 function wireUi() {
   refreshShaderTitle();
   setView("shader");
+  initCodeEditor();
 
   const onSlider = () => {
     const v = Number(ui.intensitySlider.value) / 100;
@@ -550,17 +679,60 @@ function wireUi() {
   });
   ui.editorCopy.addEventListener("click", copyEditorCode);
   ui.editorCode.addEventListener("input", () => {
-    ui.editorCode.classList.remove("is-invalid");
+    if (ui.editorBody) ui.editorBody.classList.remove("is-invalid");
+    updateEditorGutter();
+    syncEditorScroll();
+  });
+  ui.editorCode.addEventListener("scroll", syncEditorScroll);
+  ui.editorCode.addEventListener("focus", () => {
+    if (ui.editorBody) ui.editorBody.classList.add("is-focus");
+  });
+  ui.editorCode.addEventListener("blur", () => {
+    if (ui.editorBody) ui.editorBody.classList.remove("is-focus");
   });
   ui.editorCode.addEventListener("keydown", (e) => {
     if ((e.metaKey || e.ctrlKey) && e.key === "Enter") {
       e.preventDefault();
       applyEditorEdit();
+      return;
+    }
+    if (e.key === "Tab") {
+      e.preventDefault();
+      const ta = ui.editorCode;
+      const start = ta.selectionStart;
+      const end = ta.selectionEnd;
+      const indent = "  ";
+      if (start === end && !e.shiftKey) {
+        // Simple insert at caret.
+        ta.setRangeText(indent, start, end, "end");
+      } else {
+        // Range selection: indent / outdent each affected line.
+        const value = ta.value;
+        const lineStart = value.lastIndexOf("\n", start - 1) + 1;
+        const before = value.slice(0, lineStart);
+        const block = value.slice(lineStart, end);
+        const after = value.slice(end);
+        let next;
+        if (e.shiftKey) {
+          next = block.replace(/^(  |\t| )/gm, "");
+        } else {
+          next = block.replace(/^/gm, indent);
+        }
+        const delta = next.length - block.length;
+        ta.value = before + next + after;
+        ta.selectionStart = lineStart;
+        ta.selectionEnd = end + delta;
+      }
+      updateEditorGutter();
+      syncEditorScroll();
+      return;
     }
   });
 
   ui.feedToggle.addEventListener("click", () => setHideFeed(!state.hideFeed));
   ui.viewToggle.addEventListener("click", () => cycleView());
+  ui.immersiveToggle.addEventListener("click", () => setImmersive(!state.immersive));
+  ui.immersiveExit.addEventListener("click", () => setImmersive(false));
 
   ui.sourceToggle.addEventListener("click", () => {
     if (state.videoSource === "file") {
@@ -586,17 +758,27 @@ function wireUi() {
       e.preventDefault();
       return;
     }
-    if (e.key === "Escape" && document.activeElement === ui.editorCode) {
-      ui.editorCode.blur();
+    if (e.key === "Escape" && isEditorFocused()) {
+      blurEditor();
       e.preventDefault();
       return;
     }
     if (document.activeElement === ui.promptInput) return;
-    if (document.activeElement === ui.editorCode) return;
+    if (isEditorFocused()) return;
 
     if (e.key === "Escape" && state.editorOpen) {
       setEditorOpen(false);
       e.preventDefault();
+      return;
+    }
+    if (e.key === "Escape" && state.immersive) {
+      setImmersive(false);
+      e.preventDefault();
+      return;
+    }
+    if (e.key === "i" || e.key === "I") {
+      e.preventDefault();
+      setImmersive(!state.immersive);
       return;
     }
 

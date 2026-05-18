@@ -4,7 +4,11 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>Latent Canvas</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/lib/codemirror.css" />
     <link rel="stylesheet" href="./styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/lib/codemirror.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/mode/clike/clike.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/addon/edit/matchbrackets.js"></script>
   </head>
   <body>
     <main id="stage" class="stage">
@@ -53,6 +57,13 @@
               aria-controls="editor"
               title="Toggle shader editor (e)"
             >GLSL</button>
+            <button
+              id="immersiveToggle"
+              class="meta__btn"
+              type="button"
+              aria-pressed="false"
+              title="Immersive view — hide all UI (i)"
+            >IMMERSIVE</button>
           </div>
         </header>
 
@@ -108,16 +119,23 @@
             </header>
             <div class="editor__meta" id="editorMeta">—</div>
             <div class="editor__status" id="editorStatus" aria-live="polite">idle</div>
-            <textarea
-              class="editor__code"
-              id="editorCode"
-              spellcheck="false"
-              autocomplete="off"
-              autocorrect="off"
-              autocapitalize="off"
-              wrap="off"
-              aria-label="Editable fragment shader source"
-            ></textarea>
+            <div class="editor__body">
+              <div class="editor__gutter" aria-hidden="true">
+                <div class="editor__gutter-inner" id="editorGutter"></div>
+              </div>
+              <div class="editor__codewrap">
+                <textarea
+                  class="editor__code"
+                  id="editorCode"
+                  spellcheck="false"
+                  autocomplete="off"
+                  autocorrect="off"
+                  autocapitalize="off"
+                  wrap="off"
+                  aria-label="Editable fragment shader source"
+                ></textarea>
+              </div>
+            </div>
             <pre class="editor__error" id="editorError" aria-live="polite"></pre>
           </aside>
 
@@ -127,9 +145,18 @@
             <div class="hints__row"><kbd>d</kbd><span>debug view</span></div>
             <div class="hints__row"><kbd>c</kbd><span>toggle camera</span></div>
             <div class="hints__row"><kbd>v</kbd><span>video file source</span></div>
+            <div class="hints__row"><kbd>i</kbd><span>immersive view</span></div>
             <div class="hints__row"><kbd>⌘/Ctrl+↵</kbd><span>compile shader</span></div>
             <div class="hints__row"><kbd>Esc</kbd><span>dismiss</span></div>
           </div>
+
+          <button
+            id="immersiveExit"
+            class="immersive-exit"
+            type="button"
+            aria-label="Exit immersive view"
+            title="Exit immersive view (Esc / i)"
+          >×</button>
 
           <div id="boot" class="boot">
             <div class="boot__inner">
