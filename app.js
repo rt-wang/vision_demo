@@ -252,8 +252,10 @@ function refreshSourceToggle() {
 function sizeCanvases() {
   const w = video.videoWidth || 1280;
   const h = video.videoHeight || 720;
+  const aspect = w / h;
   outputCanvas.width = w;
   outputCanvas.height = h;
+  ui.window.style.setProperty("--feed-aspect", aspect.toFixed(6));
   captureCanvas.width = w;
   captureCanvas.height = h;
   shaderRenderer.resize(w, h);
