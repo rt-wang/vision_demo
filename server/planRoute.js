@@ -1,5 +1,5 @@
 /*
- * Latent Canvas reference server (Phase 5).
+ * Mirage reference server (Phase 5).
  *
  * Serves the static frontend AND a POST /api/shader endpoint that:
  *   - takes { userPrompt, detectedClasses, signals, currentShader, masksAvailable }
@@ -92,7 +92,7 @@ const server = http.createServer((req, res) => {
 });
 
 server.listen(PORT, "0.0.0.0", () => {
-  console.log(`Latent Canvas: http://localhost:${PORT} (bound to 0.0.0.0)`);
+  console.log(`Mirage: http://localhost:${PORT} (bound to 0.0.0.0)`);
   console.log(`Model: ${MODEL}`);
   console.log(isShaderRouteReady() ? "Shader route: live" : "Shader route: disabled (no API key)");
 });

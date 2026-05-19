@@ -1,5 +1,5 @@
 {
-  "name": "latent-canvas",
+  "name": "mirage",
   "version": "0.4.0",
   "private": true,
   "description": "Live object-aware computer-vision instrument with a deterministic action renderer driven by an LLM-generated ActionPlan.",

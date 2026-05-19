@@ -6,7 +6,7 @@
  * the prompt lives next to the schema it must match (validateShaderPlan).
  */
 
-export const SYSTEM_PROMPT = `You are the shader author for Latent Canvas, a live computer-vision visual instrument.
+export const SYSTEM_PROMPT = `You are the shader author for Mirage, a live computer-vision visual instrument.
 
 Return only valid JSON in this exact shape:
 {

@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-    <title>Latent Canvas</title>
+    <title>Mirage</title>
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/lib/codemirror.css" />
     <link rel="stylesheet" href="./styles.css" />
     <script src="https://cdn.jsdelivr.net/npm/codemirror@5.65.16/lib/codemirror.js"></script>
@@ -14,12 +14,14 @@
     <main id="stage" class="stage">
       <div class="window" id="window">
         <header class="titlebar" aria-hidden="true">
-          <div class="dots">
-            <span class="dot dot--red"></span>
-            <span class="dot dot--yellow"></span>
-            <span class="dot dot--green"></span>
+          <div class="titlebar__left">
+            <div class="dots">
+              <span class="dot dot--red"></span>
+              <span class="dot dot--yellow"></span>
+              <span class="dot dot--green"></span>
+            </div>
+            <div class="title">MIRAGE</div>
           </div>
-          <div class="title">LATENT CANVAS</div>
           <div class="meta">
             <span id="fps" class="meta__fps">— fps</span>
             <span id="status" class="meta__status">booting</span>
@@ -44,6 +46,19 @@
               hidden
             />
             <button
+              id="audioToggle"
+              class="meta__btn"
+              type="button"
+              aria-pressed="false"
+              title="Upload an audio track"
+            >AUDIO</button>
+            <input
+              id="audioFile"
+              type="file"
+              accept="audio/*"
+              hidden
+            />
+            <button
               id="viewToggle"
               class="meta__btn"
               type="button"
@@ -57,6 +72,20 @@
               aria-controls="editor"
               title="Toggle shader editor (e)"
             >GLSL</button>
+            <button
+              id="recordToggle"
+              class="meta__btn"
+              type="button"
+              title="Start / stop recording"
+            >REC</button>
+            <button
+              id="presetsToggle"
+              class="meta__btn"
+              type="button"
+              aria-expanded="false"
+              aria-controls="presets"
+              title="Saved presets"
+            >PRESETS</button>
             <button
               id="immersiveToggle"
               class="meta__btn"
@@ -74,6 +103,9 @@
           <div class="overlay overlay--top">
             <span class="badge" id="countBadge">0 objects</span>
             <span class="badge badge--title" id="shaderTitle">OpenCV Default</span>
+            <span class="badge badge--rec" id="recIndicator" hidden>
+              <span class="rec-dot"></span><span id="recTimer">0:00</span>
+            </span>
           </div>
 
           <div class="overlay overlay--bottom">
@@ -139,15 +171,31 @@
             <pre class="editor__error" id="editorError" aria-live="polite"></pre>
           </aside>
 
-          <div id="hints" class="hints" aria-label="Keyboard shortcuts">
-            <div class="hints__row"><kbd>/</kbd><span>focus prompt</span></div>
-            <div class="hints__row"><kbd>e</kbd><span>shader editor</span></div>
-            <div class="hints__row"><kbd>d</kbd><span>debug view</span></div>
-            <div class="hints__row"><kbd>c</kbd><span>toggle camera</span></div>
+          <aside id="presets" class="presets" aria-hidden="true" aria-label="Saved presets">
+            <header class="presets__header">
+              <span class="presets__title">PRESETS</span>
+              <button id="presetSave" class="editor__btn editor__btn--accent" type="button">Save current</button>
+              <button id="presetsClose" class="editor__close" type="button" aria-label="Close presets">×</button>
+            </header>
+            <div class="presets__list" id="presetsList"></div>
+            <p class="presets__empty" id="presetsEmpty">No saved presets yet.<br>Generate a shader you like, then hit Save current.</p>
+          </aside>
+
+          <div class="hints-wrap" id="hintsWrap">
+            <button id="hintsToggle" class="hints__toggle" type="button">HOTKEYS</button>
+            <div id="hints" class="hints" aria-label="Keyboard shortcuts">
+              <div class="hints__row"><kbd>/</kbd><span>focus prompt</span></div>
+              <div class="hints__row"><kbd>e</kbd><span>shader editor</span></div>
+              <div class="hints__row"><kbd>p</kbd><span>presets panel</span></div>
+              <div class="hints__row"><kbd>s</kbd><span>save preset</span></div>
+              <div class="hints__row"><kbd>d</kbd><span>debug view</span></div>
+              <div class="hints__row"><kbd>c</kbd><span>toggle camera</span></div>
+              <div class="hints__row"><kbd>r</kbd><span>record / stop</span></div>
             <div class="hints__row"><kbd>v</kbd><span>video file source</span></div>
-            <div class="hints__row"><kbd>i</kbd><span>immersive view</span></div>
-            <div class="hints__row"><kbd>⌘/Ctrl+↵</kbd><span>compile shader</span></div>
-            <div class="hints__row"><kbd>Esc</kbd><span>dismiss</span></div>
+              <div class="hints__row"><kbd>i</kbd><span>immersive view</span></div>
+              <div class="hints__row"><kbd>⌘/Ctrl+↵</kbd><span>compile shader</span></div>
+              <div class="hints__row"><kbd>Esc</kbd><span>dismiss</span></div>
+            </div>
           </div>
 
           <button

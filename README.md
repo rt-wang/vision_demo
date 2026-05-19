@@ -1,4 +1,4 @@
-# Latent Canvas
+# Mirage
 
 A live, object-aware creative-vision instrument that runs entirely in the browser. Your webcam feeds an object detector (COCO-SSD) and OpenCV.js extracts a foreground/background mask (MOG2) and a scene-level Canny edge mask. Those mask canvases plus the raw camera frame are bound as textures to an **AI-authored GLSL fragment shader** that paints the scene. The user can prompt the model for a new shader, edit the resulting GLSL directly, and recompile in place.
 
@@ -46,7 +46,7 @@ Open <http://localhost:8000>. Type a prompt like "turn the moving foreground int
 Optional env vars:
 
 - `PORT` — listen port, default `8000`.
-- `LATENT_CANVAS_MODEL` — Anthropic model id, default `claude-sonnet-4-6`.
+- `LATENT_CANVAS_MODEL` — Anthropic model id, default `claude-sonnet-4-6`. (env var name unchanged)
 
 ### First-load notes
 

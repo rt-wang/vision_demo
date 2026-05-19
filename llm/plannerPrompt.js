@@ -13,7 +13,7 @@ import {
   SUPPORTED_DEPTH_PALETTES,
 } from "./actionPlanSchema.js";
 
-export const SYSTEM_PROMPT = `You are the action planner for Latent Canvas, a live object-aware visual instrument.
+export const SYSTEM_PROMPT = `You are the action planner for Mirage, a live object-aware visual instrument.
 
 Return only valid JSON matching the ActionPlan schema.
 Do not include markdown.

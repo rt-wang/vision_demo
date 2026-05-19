@@ -1,5 +1,5 @@
 /*
- * Latent Canvas — Phase 5 shader-first.
+ * Mirage — Phase 5 shader-first.
  *
  * Pipeline:
  *   getUserMedia → hidden <video>
@@ -38,6 +38,7 @@ import {
 } from "./render/shader/defaultShaders.js";
 import { requestShaderPlan } from "./llm/shaderClient.js";
 import { validateShaderPlan } from "./llm/validateShaderPlan.js";
+import { createAudioEngine } from "./audio/audioEngine.js";
 
 const video = document.getElementById("video");
 const outputCanvas = document.getElementById("output");
@@ -45,6 +46,11 @@ const outputCtx = outputCanvas.getContext("2d");
 
 const captureCanvas = document.createElement("canvas");
 const captureCtx = captureCanvas.getContext("2d", { willReadFrequently: true });
+
+// 1×1 canvas — drawing the output into it gives us the average color for free.
+const colorSampleCanvas = document.createElement("canvas");
+colorSampleCanvas.width = colorSampleCanvas.height = 1;
+const colorSampleCtx = colorSampleCanvas.getContext("2d", { willReadFrequently: true });
 
 const ui = {
   fps: document.getElementById("fps"),
@@ -76,9 +82,20 @@ const ui = {
   feedToggle: document.getElementById("feedToggle"),
   sourceToggle: document.getElementById("sourceToggle"),
   sourceFile: document.getElementById("sourceFile"),
+  audioToggle: document.getElementById("audioToggle"),
+  audioFile: document.getElementById("audioFile"),
+  recordToggle: document.getElementById("recordToggle"),
+  recIndicator: document.getElementById("recIndicator"),
+  recTimer: document.getElementById("recTimer"),
   viewToggle: document.getElementById("viewToggle"),
   immersiveToggle: document.getElementById("immersiveToggle"),
   immersiveExit: document.getElementById("immersiveExit"),
+  presetsToggle: document.getElementById("presetsToggle"),
+  presets: document.getElementById("presets"),
+  presetsClose: document.getElementById("presetsClose"),
+  presetSave: document.getElementById("presetSave"),
+  presetsList: document.getElementById("presetsList"),
+  presetsEmpty: document.getElementById("presetsEmpty"),
   window: document.getElementById("window"),
 };
 
@@ -109,6 +126,7 @@ const state = {
   promptPending: false,
   lastShaderWarnings: [],
   editorOpen: false,
+  presetsOpen: false,
   hideFeed: false,
   immersive: false,
   view: "shader",
@@ -131,6 +149,7 @@ const INTENSITY_SMOOTHING = 0.12;
 const SHADER_DUCK_MS = 220;
 
 const shaderRenderer = createShaderRenderer({ width: 1280, height: 720 });
+const audioEngine = createAudioEngine();
 let shaderEditor = null;
 let editorGutterLineCount = 0;
 
@@ -501,6 +520,7 @@ function applyShaderPlan(plan, source, warnings) {
   announceShaderSwitch();
   refreshShaderTitle();
   refreshEditor();
+  audioEngine.updateFromShader(state.shader);
   return true;
 }
 
@@ -598,6 +618,7 @@ function setImmersive(on) {
   ui.immersiveToggle.classList.toggle("is-active", on);
   ui.immersiveToggle.setAttribute("aria-pressed", on ? "true" : "false");
   if (on && state.editorOpen) setEditorOpen(false);
+  if (on && state.presetsOpen) setPresetsOpen(false);
 }
 
 function setView(view) {
@@ -647,13 +668,188 @@ async function submitPrompt() {
   } catch (err) {
     console.error("[shader] failed:", err);
     state.shader.compileError = err.message || String(err);
-    setPromptStatus("invalid", "err");
+    setPromptStatus("error", "err");
     refreshEditor();
   } finally {
     state.promptPending = false;
     ui.promptSubmit.disabled = false;
   }
 }
+
+// ── Recording ──────────────────────────────────────────────────────────────
+
+let mediaRecorder = null;
+let recordedChunks = [];
+let recTimerInterval = null;
+let recStartTime = 0;
+let recordingVideoTrack = null;
+
+function formatRecTime(ms) {
+  const s = Math.floor(ms / 1000);
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}
+
+function startRecording() {
+  const mimeType = [
+    "video/webm;codecs=vp9,opus",
+    "video/webm;codecs=vp8,opus",
+    "video/webm",
+  ].find((t) => MediaRecorder.isTypeSupported(t)) || "video/webm";
+
+  const videoStream = outputCanvas.captureStream(0); // 0 = manual frame capture via requestFrame()
+  const audioStream = audioEngine.getAudioStream();
+  const tracks = [
+    ...videoStream.getTracks(),
+    ...(audioStream ? audioStream.getTracks() : []),
+  ];
+  const stream = new MediaStream(tracks);
+
+  recordedChunks = [];
+  mediaRecorder = new MediaRecorder(stream, { mimeType });
+  mediaRecorder.ondataavailable = (e) => {
+    if (e.data.size > 0) recordedChunks.push(e.data);
+  };
+  mediaRecorder.onstop = () => {
+    const blob = new Blob(recordedChunks, { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `mirage-${new Date().toISOString().slice(0, 19).replace(/[:.]/g, "-")}.webm`;
+    a.click();
+    URL.revokeObjectURL(url);
+    recordedChunks = [];
+  };
+  recordingVideoTrack = videoStream.getVideoTracks()[0];
+  mediaRecorder.start();
+
+  recStartTime = Date.now();
+  ui.recTimer.textContent = "0:00";
+  ui.recIndicator.hidden = false;
+  ui.recordToggle.textContent = "STOP";
+  ui.recordToggle.classList.add("is-rec");
+  recTimerInterval = setInterval(() => {
+    ui.recTimer.textContent = formatRecTime(Date.now() - recStartTime);
+  }, 500);
+}
+
+function stopRecording() {
+  if (!mediaRecorder) return;
+  mediaRecorder.stop();
+  mediaRecorder = null;
+  recordingVideoTrack = null;
+  clearInterval(recTimerInterval);
+  ui.recIndicator.hidden = true;
+  ui.recordToggle.textContent = "REC";
+  ui.recordToggle.classList.remove("is-rec");
+}
+
+// ── End Recording ──────────────────────────────────────────────────────────
+
+// ── Presets ────────────────────────────────────────────────────────────────
+
+const PRESETS_STORAGE_KEY = "mirage-presets";
+
+function loadStoredPresets() {
+  try { return JSON.parse(localStorage.getItem(PRESETS_STORAGE_KEY) || "[]"); }
+  catch { return []; }
+}
+
+function persistPresets(presets) {
+  localStorage.setItem(PRESETS_STORAGE_KEY, JSON.stringify(presets));
+}
+
+function setPresetsOpen(open) {
+  state.presetsOpen = open;
+  ui.presets.classList.toggle("is-open", open);
+  ui.presets.setAttribute("aria-hidden", String(!open));
+  ui.presetsToggle.setAttribute("aria-expanded", String(open));
+  ui.presetsToggle.classList.toggle("is-active", open);
+  if (open) renderPresetsList();
+}
+
+function renderPresetsList() {
+  const presets = loadStoredPresets();
+  ui.presetsList.replaceChildren();
+  ui.presetsEmpty.style.display = presets.length ? "none" : "";
+  for (const preset of presets) {
+    const item = document.createElement("div");
+    item.className = "preset-item";
+    const name = document.createElement("span");
+    name.className = "preset-item__name";
+    name.textContent = preset.title;
+    name.title = preset.description || preset.title;
+    const del = document.createElement("button");
+    del.className = "preset-item__del";
+    del.type = "button";
+    del.title = "Delete preset";
+    del.textContent = "×";
+    del.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const updated = loadStoredPresets().filter((p) => p.id !== preset.id);
+      persistPresets(updated);
+      renderPresetsList();
+    });
+    item.appendChild(name);
+    item.appendChild(del);
+    item.addEventListener("click", () => {
+      applyShaderPlan(
+        { title: preset.title, description: preset.description, fragmentShader: preset.fragmentShader },
+        "llm",
+        [],
+      );
+      setEditorValue(preset.fragmentShader);
+      updateEditorGutter();
+      syncEditorScroll();
+    });
+    item.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      // Replace the name span with an inline input.
+      const input = document.createElement("input");
+      input.className = "preset-item__rename";
+      input.value = preset.title;
+      input.spellcheck = false;
+      name.replaceWith(input);
+      input.focus();
+      input.select();
+      function commit() {
+        const newTitle = input.value.trim() || preset.title;
+        const all = loadStoredPresets();
+        const target = all.find((p) => p.id === preset.id);
+        if (target) { target.title = newTitle; persistPresets(all); }
+        renderPresetsList();
+      }
+      input.addEventListener("keydown", (ev) => {
+        if (ev.key === "Enter") { ev.preventDefault(); commit(); }
+        if (ev.key === "Escape") { renderPresetsList(); }
+      });
+      input.addEventListener("blur", commit);
+    });
+    ui.presetsList.appendChild(item);
+  }
+}
+
+function saveCurrentPreset() {
+  if (!state.shader?.fragmentShader) return;
+  const presets = loadStoredPresets();
+  presets.unshift({
+    id: String(Date.now()),
+    title: state.shader.title || "Untitled",
+    description: state.shader.description || "",
+    fragmentShader: state.shader.fragmentShader,
+    savedAt: Date.now(),
+  });
+  persistPresets(presets);
+  if (state.presetsOpen) renderPresetsList();
+  ui.presetSave.textContent = "saved ✓";
+  ui.presetsToggle.classList.add("is-flash");
+  setTimeout(() => {
+    ui.presetSave.textContent = "Save current";
+    ui.presetsToggle.classList.remove("is-flash");
+  }, 1400);
+}
+
+// ── End Presets ────────────────────────────────────────────────────────────
 
 function wireUi() {
   refreshShaderTitle();
@@ -754,6 +950,34 @@ function wireUi() {
   });
   refreshSourceToggle();
 
+  document.getElementById("hintsToggle").addEventListener("click", () =>
+    document.getElementById("hintsWrap").classList.toggle("is-open"),
+  );
+
+  ui.recordToggle.addEventListener("click", () => {
+    if (mediaRecorder) stopRecording(); else startRecording();
+  });
+
+  ui.presetsToggle.addEventListener("click", () => setPresetsOpen(!state.presetsOpen));
+  ui.presetsClose.addEventListener("click", () => setPresetsOpen(false));
+  ui.presetSave.addEventListener("click", saveCurrentPreset);
+
+  ui.audioToggle.addEventListener("click", () => ui.audioFile.click());
+  ui.audioFile.addEventListener("change", (e) => {
+    const file = e.target.files && e.target.files[0];
+    e.target.value = "";
+    if (!file) return;
+    audioEngine.loadFile(file)
+      .then(() => {
+        ui.audioToggle.setAttribute("aria-pressed", "true");
+        ui.audioToggle.classList.add("is-active");
+      })
+      .catch((err) => {
+        console.error("[audio] load failed:", err);
+        setPromptStatus("audio load failed", "err");
+      });
+  });
+
   window.addEventListener("keydown", (e) => {
     if (e.key === "Escape" && document.activeElement === ui.promptInput) {
       ui.promptInput.blur();
@@ -795,6 +1019,16 @@ function wireUi() {
       setEditorOpen(!state.editorOpen);
       return;
     }
+    if (e.key === "p" || e.key === "P") {
+      e.preventDefault();
+      setPresetsOpen(!state.presetsOpen);
+      return;
+    }
+    if (e.key === "s" || e.key === "S") {
+      e.preventDefault();
+      saveCurrentPreset();
+      return;
+    }
     if (e.key === "d" || e.key === "D") {
       e.preventDefault();
       cycleView();
@@ -803,6 +1037,11 @@ function wireUi() {
     if (e.key === "c" || e.key === "C") {
       e.preventDefault();
       setHideFeed(!state.hideFeed);
+      return;
+    }
+    if (e.key === "r" || e.key === "R") {
+      e.preventDefault();
+      if (mediaRecorder) stopRecording(); else startRecording();
       return;
     }
     if (e.key === "v" || e.key === "V") {
@@ -841,6 +1080,7 @@ async function loop() {
         now,
       });
       state.sceneSignals = computeSceneSignals(state.objects);
+      audioEngine.updateFromSignals(state.sceneSignals);
 
       // OpenCV outputs.
       state.foregroundBackground = isForegroundBackgroundReady()
@@ -853,6 +1093,7 @@ async function loop() {
       const target = effectiveTargetIntensity(now);
       state.currentIntensity += (target - state.currentIntensity) * INTENSITY_SMOOTHING;
       if (state.currentIntensity < 0.001) state.currentIntensity = 0;
+      audioEngine.setVolume(state.currentIntensity);
 
       const fgCanvas = getForegroundMaskCanvas();
       const edgeCanvas = getSceneEdgeMaskCanvas();
@@ -881,12 +1122,34 @@ async function loop() {
       }
 
       updateCountBadge(state.objects);
+
+      // Notify the recorder that a new frame is ready (captureStream(0) mode).
+      if (recordingVideoTrack) recordingVideoTrack.requestFrame();
+
+      // Sample the average output color and drive the audio engine.
+      colorSampleCtx.drawImage(outputCanvas, 0, 0, 1, 1);
+      const px = colorSampleCtx.getImageData(0, 0, 1, 1).data;
+      audioEngine.updateFromColor(...rgbToHsl(px[0], px[1], px[2]));
     } catch (err) {
       console.error("[loop] error:", err);
     }
   }
   tickFps(now);
   requestAnimationFrame(loop);
+}
+
+function rgbToHsl(r, g, b) {
+  r /= 255; g /= 255; b /= 255;
+  const max = Math.max(r, g, b), min = Math.min(r, g, b);
+  const l = (max + min) / 2;
+  if (max === min) return [0, 0, l];
+  const d = max - min;
+  const s = l > 0.5 ? d / (2 - max - min) : d / (max + min);
+  let h;
+  if (max === r) h = ((g - b) / d + (g < b ? 6 : 0)) / 6;
+  else if (max === g) h = ((b - r) / d + 2) / 6;
+  else h = ((r - g) / d + 4) / 6;
+  return [h * 360, s, l];
 }
 
 async function main() {
