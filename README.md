@@ -4,6 +4,8 @@ A live, object-aware creative-vision instrument that runs entirely in the browse
 
 Phase 5 replaces the earlier `ActionPlan` system: the AI no longer picks from a fixed vocabulary of effects — it writes the shader code that decides how scene structure becomes the final image.
 
+On top of the visual pipeline you can drop in your own audio track that reacts to the on-screen color, save any shader you like as a preset, and record the live output (video **and** audio) to a `.webm` file — all in the browser, no upload.
+
 ---
 
 ## Run it
@@ -61,10 +63,46 @@ Optional env vars:
   - `thermal ghost foreground with electric green edges`
   - `infrared body with scanline overlay`
   - `dim everything except the moving silhouette and trace its outline`
-- **Intensity slider**: a scalar uniform (`u_intensity`) the shader is encouraged to honor.
+- **Intensity slider**: a scalar uniform (`u_intensity`) the shader is encouraged to honor. It also sets the audio master volume.
 - **GLSL editor** (`e`): a slide-out panel with the active fragment shader source. Edit and press **Render** (or Cmd/Ctrl+Enter) to recompile. Compile errors render inline; the last working shader stays active.
+- **Presets** (`p`): a slide-out panel of saved shaders (see [Presets](#presets)).
+- **Audio** (titlebar): upload a track that reacts to the on-screen color (see [Audio](#audio)).
+- **Record** (`r`): capture the live output to a `.webm` (see [Recording](#recording)).
 - **Debug view** (`d`): cycle through SHADER → VIDEO → FG MASK → EDGE MASK to see exactly what OpenCV is feeding the shader.
-- **Keyboard**: `/` focuses the prompt, `Enter` submits, `Escape` blurs. `e` toggles the editor, `d` cycles debug views, `c` toggles the camera feed, `v` swaps source between camera and a video file.
+- **Hotkeys panel**: the `HOTKEYS` button reveals the full keyboard cheat sheet in-app.
+- **Keyboard**: `/` focuses the prompt, `Enter` submits, `Escape` dismisses. `e` editor, `p` presets, `s` save current as preset, `d` cycle debug views, `c` toggle camera feed, `r` record/stop, `v` swap source between camera and a video file, `i` immersive view, `Cmd/Ctrl+Enter` compile shader.
+
+---
+
+## Audio
+
+Click **AUDIO** in the titlebar and pick any audio file (it stays local — nothing is uploaded). It loops through a Web Audio graph whose parameters are driven, every frame, by the *average color of the rendered output* — so the music shifts as the shader does. Nothing is heard until you load a track.
+
+| Output signal | Audio effect |
+| --- | --- |
+| Hue | Lowpass cutoff, 500 Hz → 16 kHz (red = dark/muffled, blue = bright) |
+| Hue ≈ 60° (yellow) | High-shelf treble boost — sparkly/"heavenly" |
+| Hue ≈ 220° (blue) | Delay echo (wet + feedback) — spacious |
+| Saturation | Soft distortion + filter resonance |
+| Lightness | Reverb wet mix (a dark screen stays dry) |
+| Scene motion | Tremolo rate + depth |
+| Intensity slider | Master volume |
+
+A near-black frame fades the color-driven effects toward neutral, so a dim scene doesn't sound mangled.
+
+## Recording
+
+Click **REC** (or press `r`) to record. The output canvas is captured frame-by-frame (synced to the render loop) and muxed with the live audio graph into a `video/webm` stream via `MediaRecorder`. A timer shows in the top overlay; click **STOP** (or `r` again) and the browser downloads a timestamped `mirage-*.webm`. If no audio track is loaded, the recording is video-only.
+
+## Presets
+
+Press `s` (or **Save current** in the Presets panel) to store the active shader — title, description, and GLSL source — in `localStorage`. Open the panel with `p` or **PRESETS**:
+
+- **Click** an entry to apply it (it also loads into the editor).
+- **Right-click** an entry to rename it inline.
+- **×** deletes it.
+
+Presets persist across reloads on the same browser. They are local only — there's no server-side store.
 
 ---
 
@@ -92,10 +130,12 @@ Key contract: the LLM gets **shader-level expressive control, not arbitrary exec
 
 ```
 vision_demo/
-  index.html               # window shell, control bar, shader editor, CDN script tags
-  styles.css               # dark immersive UI
-  app.js                   # capture loop, prompt flow, intensity smoothing, shader render dispatch
+  index.html               # window shell, control bar, shader editor, presets panel, CDN script tags
+  styles.css               # dark immersive UI (responsive — fits any screen)
+  app.js                   # capture loop, prompt flow, intensity smoothing, shader render dispatch, recording, presets
   package.json             # server deps + npm start
+  audio/
+    audioEngine.js         # color/motion-reactive Web Audio graph + recording stream
   analysis/
     objectDetector.js      # COCO-SSD wrapper
     objectTracker.js       # per-class IoU tracking + EMA bbox smoothing
@@ -149,6 +189,7 @@ vision_demo/
 | 3 | ✅ | Deterministic action vocabulary, hardcoded presets, intensity slider. |
 | 4 | ✅ | Prompt → validated ActionPlan loop with mock + Anthropic backends. |
 | 5 | ✅ | AI-authored GLSL: shader is the renderer; OpenCV masks feed the shader; prompt → fragment shader → live compile. |
-| 6 | ⏳ | Object box / depth uniforms; richer per-object shader effects. |
+| 6 | 🚧 | Color/motion-reactive audio engine, in-browser video+audio recording, saved shader presets, responsive layout. |
+| 7 | ⏳ | Object box / depth uniforms; richer per-object shader effects. |
 
 See `phase_5_shader_implementation.md` for the full Phase 5 design.

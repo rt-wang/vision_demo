@@ -2,7 +2,7 @@
   "name": "mirage",
   "version": "0.4.0",
   "private": true,
-  "description": "Live object-aware computer-vision instrument with a deterministic action renderer driven by an LLM-generated ActionPlan.",
+  "description": "Live object-aware creative-vision instrument: webcam + OpenCV masks feed an AI-authored GLSL shader, with color-reactive audio, in-browser recording, and saved shader presets.",
   "type": "module",
   "scripts": {
     "start": "node server/planRoute.js",
