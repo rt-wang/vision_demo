@@ -28,6 +28,7 @@ body {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   -webkit-font-smoothing: antialiased;
   overflow: hidden;
+  overscroll-behavior: none;
 }
 
 body::before {
@@ -48,6 +49,7 @@ body::before {
   z-index: 1;
   width: 100vw;
   height: 100vh;
+  height: 100dvh; /* track mobile browser chrome (toolbars) */
   display: grid;
   place-items: center;
   padding: clamp(12px, 2.5vmin, 36px);
@@ -924,8 +926,136 @@ body::before {
   transition: width 300ms ease;
 }
 
-@media (max-width: 720px) {
-  .title { display: none; }
-  .titlebar { grid-template-columns: auto 1fr; }
-  .meta { font-size: 10px; gap: 10px; }
+/* ===========================================================================
+   Responsive — adapt to tablets, phones and odd browser sizes
+   =========================================================================== */
+
+/* Tablet / large-phone landscape: the title bar runs out of room for the full
+   button row, so collapse the title and turn the meta cluster into a single
+   horizontally-scrollable strip instead of letting it overflow the window. */
+@media (max-width: 820px) {
+  .titlebar {
+    padding: 0 10px;
+    gap: 8px;
+  }
+  .titlebar__left {
+    flex: 0 0 auto;
+    gap: 8px;
+  }
+  .title {
+    display: none;
+  }
+  .meta {
+    flex: 1 1 auto;
+    justify-content: flex-start;
+    flex-wrap: nowrap;
+    white-space: nowrap;
+    gap: 8px;
+    overflow-x: auto;
+    overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .meta::-webkit-scrollbar {
+    display: none;
+  }
+  .meta__btn {
+    flex: 0 0 auto;
+  }
+  .meta__fps {
+    display: none;
+  }
+}
+
+/* Phone: go full-bleed (drop the desktop "window" chrome), enlarge tap targets,
+   keep controls clear of the notch / home indicator, and stop iOS from zooming
+   when the prompt field is focused (needs a >=16px font). */
+@media (max-width: 640px) {
+  .stage {
+    padding: 0;
+  }
+  .window {
+    width: 100vw;
+    height: 100vh;
+    height: 100dvh;
+    border-radius: 0;
+    border: none;
+  }
+
+  .meta {
+    gap: 6px;
+  }
+  .meta__btn {
+    padding: 7px 11px;
+    letter-spacing: 0.16em;
+  }
+
+  .overlay--top {
+    top: calc(12px + env(safe-area-inset-top));
+  }
+  .overlay--bottom {
+    bottom: calc(14px + env(safe-area-inset-bottom));
+  }
+
+  .controls {
+    width: calc(100% - 20px);
+    padding: 10px;
+    gap: 8px;
+    border-radius: 14px;
+  }
+  .prompt {
+    gap: 8px;
+  }
+  .prompt__input {
+    flex-basis: 100%;
+    font-size: 16px; /* prevents iOS auto-zoom on focus */
+    padding: 11px 14px;
+  }
+  .prompt__submit {
+    flex: 1 1 auto;
+    padding: 11px 16px;
+  }
+  .prompt__status {
+    display: none;
+  }
+
+  /* Editor & presets become near-full-width bottom-anchored sheets. */
+  .editor,
+  .presets {
+    top: calc(8px + env(safe-area-inset-top));
+    left: 8px;
+    right: 8px;
+    bottom: calc(8px + env(safe-area-inset-bottom));
+    width: auto;
+  }
+
+  /* Keyboard shortcuts are meaningless on touch devices. */
+  .hints-wrap {
+    display: none;
+  }
+
+  .immersive-exit {
+    top: calc(14px + env(safe-area-inset-top));
+    right: calc(14px + env(safe-area-inset-right));
+  }
+}
+
+/* Short / landscape phones: reclaim vertical space so the canvas stays usable. */
+@media (max-height: 520px) and (orientation: landscape) {
+  .titlebar {
+    height: 34px;
+  }
+  .overlay--top {
+    top: 8px;
+  }
+  .overlay--bottom {
+    bottom: 8px;
+  }
+  .controls {
+    padding: 8px 10px;
+    gap: 6px;
+  }
+  .intensity {
+    display: none; /* keep the prompt reachable; intensity stays on the slider hotkey/desktop */
+  }
 }
